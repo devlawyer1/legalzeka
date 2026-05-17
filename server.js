@@ -21,10 +21,10 @@ async function startServer() {
 
   if (!isDbConnected) {
     console.error('\n❌ Veritabanına bağlanılamadı. Lütfen aşağıdakileri kontrol edin:');
-    console.error('   1. Render PostgreSQL URL\'sinin doğru olduğunu kontrol edin.');
-    console.error('   2. Eğer yerel bilgisayarınızda (localhost) çalıştırıyorsanız, INTERNAL URL çalışmaz. EXTERNAL URL kullanmanız gerekir!');
-    console.error('   3. "npm run migrate" (veya "node src/utils/migrate.js") komutunu çalıştırarak tabloları oluşturduğunuzdan emin olun.\n');
-    process.exit(1);
+    console.error('   1. MySQL/Docker servisinin çalıştığından emin olun.');
+    console.error('   2. .env dosyasındaki DB bilgilerinin doğru olduğunu kontrol edin.');
+    console.error('   3. "npm run migrate" komutunu çalıştırarak tabloları oluşturun.\n');
+    // process.exit(1);
   }
 
   // Sunucuyu başlat
