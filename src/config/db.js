@@ -6,12 +6,12 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+const isRenderInternal = process.env.DATABASE_URL?.includes('dpg-') && !process.env.DATABASE_URL?.includes('render.com');
+
 const pgPool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Render.com veritabanları dış bağlantılarda SSL gerektirir
-  ssl: process.env.DATABASE_URL?.includes('render.com') || process.env.NODE_ENV === 'production' 
-    ? { rejectUnauthorized: false } 
-    : false
+  // Render Internal bağlantıları SSL desteklemez, ancak External bağlantılar ve Production ortamları gerektirir.
+  ssl: isRenderInternal ? false : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false)
 });
 
 /**
