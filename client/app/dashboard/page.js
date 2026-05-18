@@ -349,7 +349,7 @@ export default function DashboardPage() {
                           setActiveNoteId(newNote.id);
                           alert("AI yanıtı notlarınıza eklendi!");
                         }}
-                        style={{...styles.logoutBtn, fontSize: 12, padding: "6px 12px", background: "var(--color-bg-subtle)", color: "#000"}}
+                        style={{...styles.logoutBtn, fontSize: 12, padding: "6px 12px", background: "var(--color-bg-elevated)", color: "var(--color-text-primary)"}}
                       >
                         <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M4 3h12a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1z" />
@@ -1047,8 +1047,8 @@ const styles = {
   aiCard: {
     width: "100%",
     maxWidth: 720,
-    background: "linear-gradient(to right bottom, #F8FAFC, #EFF6FF)",
-    border: "1px solid #DBEAFE",
+    background: "var(--color-bg-subtle)",
+    border: "1px solid var(--color-border)",
     borderRadius: "var(--radius-lg)",
     padding: "20px 24px",
     boxShadow: "var(--shadow-sm)",
@@ -1072,8 +1072,8 @@ const styles = {
   aiStreamingBadge: {
     fontSize: 11,
     fontWeight: 600,
-    color: "#3B82F6",
-    background: "#DBEAFE",
+    color: "var(--color-accent)",
+    background: "var(--color-accent-light)",
     padding: "2px 8px",
     borderRadius: 999,
     animation: "pulse-ring 1.5s infinite",
@@ -1088,7 +1088,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    borderTop: "1px solid #E5E7EB",
+    borderTop: "1px solid var(--color-border-subtle)",
     paddingTop: 12,
   },
   aiSourceLabel: {
@@ -1099,7 +1099,8 @@ const styles = {
   aiSourceTag: {
     fontSize: 11,
     color: "var(--color-accent)",
-    background: "#DBEAFE",
+    background: "var(--color-accent-light)",
+    border: "1px solid var(--color-border)",
     padding: "2px 6px",
     borderRadius: 4,
   },

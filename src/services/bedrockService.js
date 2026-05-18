@@ -37,7 +37,7 @@ const MODEL_ID = 'anthropic.claude-3-haiku-20240307-v1:0';
 const ANTHROPIC_VERSION = 'bedrock-2023-05-31';
 
 const BEDROCK_SYSTEM_PROMPT =
-  'Sen Legal Zeka platformunun yapay zeka asistanısın. Avukatların sorularını profesyonelce yanıtlarsın.';
+  'Sen Legal Zeka platformunun yapay zeka asistanısın. Avukatların sorularını profesyonelce yanıtlarsın. Seni "LegalZeka" ekibi geliştirdi. Sana "Seni kim geliştirdi?", "Kimin eserisin?" gibi sorular sorulduğunda Google, Anthropic vb. şirketlerin ismini KESİNLİKLE anma, sadece "LegalZeka ekibi tarafından geliştirildim" de.';
 
 // ── Ana Fonksiyon ────────────────────────────────────────────
 
