@@ -18,7 +18,7 @@ async function createConversation(req, res) {
     const guestIp = !userId ? (req.ip || req.connection.remoteAddress) : null;
 
     await pool.query(
-      'INSERT INTO Conversations (id, user_id, guest_ip) VALUES ($1, $2, $3)',
+      'INSERT INTO conversations (id, user_id, guest_ip) VALUES ($1, $2, $3)',
       [id, userId, guestIp]
     );
 
@@ -44,13 +44,13 @@ async function getConversations(req, res) {
     let rows;
     if (userId) {
       const result = await pool.query(
-        'SELECT id, title, created_at, updated_at FROM Conversations WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 50',
+        'SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 50',
         [userId]
       );
       rows = result.rows;
     } else {
       const result = await pool.query(
-        'SELECT id, title, created_at, updated_at FROM Conversations WHERE guest_ip = $1 AND user_id IS NULL ORDER BY updated_at DESC LIMIT 10',
+        'SELECT id, title, created_at, updated_at FROM conversations WHERE guest_ip = $1 AND user_id IS NULL ORDER BY updated_at DESC LIMIT 10',
         [guestIp]
       );
       rows = result.rows;
@@ -72,7 +72,7 @@ async function getMessages(req, res) {
     const { id } = req.params;
 
     const { rows: messages } = await pool.query(
-      'SELECT id, role, content, tool_used, created_at FROM Messages WHERE conversation_id = $1 ORDER BY created_at ASC',
+      'SELECT id, role, content, tool_used, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC',
       [id]
     );
 
@@ -97,20 +97,20 @@ async function sendMessage(req, res) {
     }
 
     // 1. Sohbetin var olduğunu kontrol et
-    const { rows: convs } = await pool.query('SELECT id FROM Conversations WHERE id = $1', [id]);
+    const { rows: convs } = await pool.query('SELECT id FROM conversations WHERE id = $1', [id]);
     if (convs.length === 0) {
       return res.status(404).json({ success: false, message: 'Sohbet bulunamadı.' });
     }
 
     // 2. Kullanıcı mesajını kaydet
     await pool.query(
-      'INSERT INTO Messages (conversation_id, role, content) VALUES ($1, $2, $3)',
+      'INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3)',
       [id, 'user', message.trim()]
     );
 
     // 3. Önceki mesaj geçmişini al (son 20 mesaj — bağlam penceresi)
     const { rows: history } = await pool.query(
-      'SELECT role, content FROM Messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20',
+      'SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20',
       [id]
     );
 
@@ -122,13 +122,13 @@ async function sendMessage(req, res) {
 
     // 5. AI yanıtını kaydet
     await pool.query(
-      'INSERT INTO Messages (conversation_id, role, content) VALUES ($1, $2, $3)',
+      'INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3)',
       [id, 'assistant', aiResponse]
     );
 
     // 6. Sohbet başlığını ilk mesajdan otomatik güncelle
     const { rows: msgCount } = await pool.query(
-      'SELECT COUNT(*) as cnt FROM Messages WHERE conversation_id = $1',
+      'SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = $1',
       [id]
     );
     if (msgCount[0].cnt <= 2) {
@@ -171,7 +171,7 @@ async function sendMessage(req, res) {
 async function deleteConversation(req, res) {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM Conversations WHERE id = $1', [id]);
+    await pool.query('DELETE FROM conversations WHERE id = $1', [id]);
     res.json({ success: true, message: 'Sohbet silindi.' });
   } catch (error) {
     console.error('Sohbet silme hatası:', error);
@@ -196,20 +196,20 @@ async function sendMessageStream(req, res) {
     }
 
     // 1. Sohbetin var olduğunu kontrol et
-    const { rows: convs } = await pool.query('SELECT id FROM Conversations WHERE id = $1', [id]);
+    const { rows: convs } = await pool.query('SELECT id FROM conversations WHERE id = $1', [id]);
     if (convs.length === 0) {
       return res.status(404).json({ success: false, message: 'Sohbet bulunamadı.' });
     }
 
     // 2. Kullanıcı mesajını kaydet
     await pool.query(
-      'INSERT INTO Messages (conversation_id, role, content) VALUES ($1, $2, $3)',
+      'INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3)',
       [id, 'user', message.trim()]
     );
 
     // 3. Önceki mesaj geçmişini al
     const { rows: history } = await pool.query(
-      'SELECT role, content FROM Messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20',
+      'SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20',
       [id]
     );
     const conversationHistory = history.slice(0, -1);
@@ -294,14 +294,14 @@ async function sendMessageStream(req, res) {
     // 6. AI yanıtını DB'ye kaydet
     if (fullResponse.trim()) {
       await pool.query(
-        'INSERT INTO Messages (conversation_id, role, content) VALUES ($1, $2, $3)',
+        'INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3)',
         [id, 'assistant', fullResponse.trim()]
       );
     }
 
     // 7. Sohbet başlığını güncelle (ilk mesajsa)
     const { rows: msgCount } = await pool.query(
-      'SELECT COUNT(*) as cnt FROM Messages WHERE conversation_id = $1',
+      'SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = $1',
       [id]
     );
     if (msgCount[0].cnt <= 2) {

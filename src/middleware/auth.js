@@ -30,8 +30,8 @@ async function authenticate(req, res, next) {
     // 3. Kullanıcının hala aktif olup olmadığını kontrol et
     const { rows: users } = await pool.query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, r.role_name
-       FROM Users u
-       JOIN Roles r ON u.role_id = r.id
+       FROM users u
+       JOIN roles r ON u.role_id = r.id
        WHERE u.id = $1`,
       [decoded.userId]
     );
@@ -123,8 +123,8 @@ async function optionalAuthenticate(req, res, next) {
 
     const { rows: users } = await pool.query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, r.role_name
-       FROM Users u
-       JOIN Roles r ON u.role_id = r.id
+       FROM users u
+       JOIN roles r ON u.role_id = r.id
        WHERE u.id = $1`,
       [decoded.userId]
     );

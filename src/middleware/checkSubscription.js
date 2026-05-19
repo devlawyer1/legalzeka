@@ -41,8 +41,8 @@ async function checkSubscription(req, res, next) {
     const { rows: subscriptions } = await pool.query(
       `SELECT us.id, us.plan_id, us.start_date, us.end_date, us.is_active,
               sp.plan_name, sp.max_search_limit, sp.price
-       FROM UserSubscriptions us
-       JOIN SubscriptionPlans sp ON us.plan_id = sp.id
+       FROM user_subscriptions us
+       JOIN subscription_plans sp ON us.plan_id = sp.id
        WHERE us.user_id = $1
          AND us.is_active = true
          AND us.end_date >= CURRENT_DATE

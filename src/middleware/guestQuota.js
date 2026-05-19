@@ -18,14 +18,14 @@ async function guestQuota(req, res, next) {
     const ipAddress = req.ip || req.connection.remoteAddress;
 
     const { rows } = await pool.query(
-      'SELECT search_count, last_search_at FROM GuestSearches WHERE ip_address = $1',
+      'SELECT search_count, last_search_at FROM guest_searches WHERE ip_address = $1',
       [ipAddress]
     );
 
     if (rows.length === 0) {
       // İlk kez arama yapıyor
       await pool.query(
-        'INSERT INTO GuestSearches (ip_address, search_count) VALUES ($1, 1)',
+        'INSERT INTO guest_searches (ip_address, search_count) VALUES ($1, 1)',
         [ipAddress]
       );
       req.subscription = {

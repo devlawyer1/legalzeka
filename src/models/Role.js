@@ -13,7 +13,7 @@ class Role {
    */
   static async findByName(roleName) {
     const { rows } = await pool.query(
-      'SELECT * FROM Roles WHERE role_name = $1',
+      'SELECT * FROM roles WHERE role_name = $1',
       [roleName]
     );
     return rows.length > 0 ? rows[0] : null;
@@ -26,7 +26,7 @@ class Role {
    */
   static async findById(id) {
     const { rows } = await pool.query(
-      'SELECT * FROM Roles WHERE id = $1',
+      'SELECT * FROM roles WHERE id = $1',
       [id]
     );
     return rows.length > 0 ? rows[0] : null;

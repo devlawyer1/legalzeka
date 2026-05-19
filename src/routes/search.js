@@ -44,7 +44,7 @@ router.get('/', optionalAuthenticate, guestQuota, checkSubscription, async (req,
     if (req.user) {
       try {
         await pool.query(
-          'INSERT INTO SearchHistory (user_id, query, search_type) VALUES ($1, $2, $3)',
+          'INSERT INTO search_history (user_id, query, search_type) VALUES ($1, $2, $3)',
           [req.user.id, q.trim(), 'keyword']
         );
       } catch (dbErr) {
@@ -128,7 +128,7 @@ router.post('/semantic', optionalAuthenticate, guestQuota, checkSubscription, as
     if (req.user) {
       try {
         await pool.query(
-          'INSERT INTO SearchHistory (user_id, query, search_type) VALUES ($1, $2, $3)',
+          'INSERT INTO search_history (user_id, query, search_type) VALUES ($1, $2, $3)',
           [req.user.id, query.trim(), 'semantic']
         );
       } catch (dbErr) {

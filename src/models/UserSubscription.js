@@ -13,7 +13,7 @@ class UserSubscription {
    */
   static async create({ userId, planId, startDate, endDate }) {
     const { rows } = await pool.query(
-      `INSERT INTO UserSubscriptions (user_id, plan_id, start_date, end_date, is_active)
+      `INSERT INTO user_subscriptions (user_id, plan_id, start_date, end_date, is_active)
        VALUES ($1, $2, $3, $4, true) RETURNING id`,
       [userId, planId, startDate, endDate]
     );
@@ -36,8 +36,8 @@ class UserSubscription {
   static async findActiveByUserId(userId) {
     const { rows } = await pool.query(
       `SELECT us.*, sp.plan_name, sp.max_search_limit, sp.price
-       FROM UserSubscriptions us
-       JOIN SubscriptionPlans sp ON us.plan_id = sp.id
+       FROM user_subscriptions us
+       JOIN subscription_plans sp ON us.plan_id = sp.id
        WHERE us.user_id = $1 AND us.is_active = true AND us.end_date >= CURRENT_DATE
        ORDER BY us.created_at DESC
        LIMIT 1`,
@@ -54,8 +54,8 @@ class UserSubscription {
   static async findAllByUserId(userId) {
     const { rows } = await pool.query(
       `SELECT us.*, sp.plan_name, sp.max_search_limit, sp.price
-       FROM UserSubscriptions us
-       JOIN SubscriptionPlans sp ON us.plan_id = sp.id
+       FROM user_subscriptions us
+       JOIN subscription_plans sp ON us.plan_id = sp.id
        WHERE us.user_id = $1
        ORDER BY us.created_at DESC`,
       [userId]

@@ -20,7 +20,7 @@ class User {
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
     await pool.query(
-      `INSERT INTO Users (id, role_id, first_name, last_name, email, password_hash, is_active)
+      `INSERT INTO users (id, role_id, first_name, last_name, email, password_hash, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, true)`,
       [id, roleId, firstName, lastName, email, passwordHash]
     );
@@ -43,8 +43,8 @@ class User {
   static async findByEmail(email) {
     const { rows } = await pool.query(
       `SELECT u.*, r.role_name
-       FROM Users u
-       JOIN Roles r ON u.role_id = r.id
+       FROM users u
+       JOIN roles r ON u.role_id = r.id
        WHERE u.email = $1`,
       [email]
     );
@@ -60,8 +60,8 @@ class User {
     const { rows } = await pool.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.is_active, u.created_at,
               r.role_name
-       FROM Users u
-       JOIN Roles r ON u.role_id = r.id
+       FROM users u
+       JOIN roles r ON u.role_id = r.id
        WHERE u.id = $1`,
       [id]
     );
@@ -85,7 +85,7 @@ class User {
    */
   static async emailExists(email) {
     const { rows } = await pool.query(
-      'SELECT id FROM Users WHERE email = $1',
+      'SELECT id FROM users WHERE email = $1',
       [email]
     );
     return rows.length > 0;
