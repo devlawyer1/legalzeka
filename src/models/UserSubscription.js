@@ -12,14 +12,14 @@ class UserSubscription {
    * @returns {Promise<Object>}
    */
   static async create({ userId, planId, startDate, endDate }) {
-    const [result] = await pool.query(
+    const { rows } = await pool.query(
       `INSERT INTO UserSubscriptions (user_id, plan_id, start_date, end_date, is_active)
-       VALUES (?, ?, ?, ?, 1)`,
+       VALUES ($1, $2, $3, $4, true) RETURNING id`,
       [userId, planId, startDate, endDate]
     );
 
     return {
-      id: result.insertId,
+      id: rows[0].id,
       userId,
       planId,
       startDate,
@@ -34,11 +34,11 @@ class UserSubscription {
    * @returns {Promise<Object|null>}
    */
   static async findActiveByUserId(userId) {
-    const [rows] = await pool.query(
+    const { rows } = await pool.query(
       `SELECT us.*, sp.plan_name, sp.max_search_limit, sp.price
        FROM UserSubscriptions us
        JOIN SubscriptionPlans sp ON us.plan_id = sp.id
-       WHERE us.user_id = ? AND us.is_active = 1 AND us.end_date >= CURDATE()
+       WHERE us.user_id = $1 AND us.is_active = true AND us.end_date >= CURRENT_DATE
        ORDER BY us.created_at DESC
        LIMIT 1`,
       [userId]
@@ -52,11 +52,11 @@ class UserSubscription {
    * @returns {Promise<Array>}
    */
   static async findAllByUserId(userId) {
-    const [rows] = await pool.query(
+    const { rows } = await pool.query(
       `SELECT us.*, sp.plan_name, sp.max_search_limit, sp.price
        FROM UserSubscriptions us
        JOIN SubscriptionPlans sp ON us.plan_id = sp.id
-       WHERE us.user_id = ?
+       WHERE us.user_id = $1
        ORDER BY us.created_at DESC`,
       [userId]
     );
@@ -70,7 +70,7 @@ class UserSubscription {
    */
   static async deactivate(subscriptionId) {
     await pool.query(
-      'UPDATE UserSubscriptions SET is_active = 0 WHERE id = ?',
+      'UPDATE UserSubscriptions SET is_active = false WHERE id = $1',
       [subscriptionId]
     );
   }

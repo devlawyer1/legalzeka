@@ -3,21 +3,26 @@
 // MySQL bağlantı havuzu (Connection Pool) yapılandırması
 // ============================================================
 
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 require('dotenv').config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT, 10) || 3306,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
+// Supabase (PostgreSQL) bağlantı havuzu
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL, // Supabase'den alacağınız connection string
+  ssl: {
+    rejectUnauthorized: false // Supabase bağlantıları için genellikle gereklidir
+  }
 });
+
+// Eğer DATABASE_URL yerine host, user, password vb. kullanmak istenirse:
+// const pool = new Pool({
+//   host: process.env.DB_HOST,
+//   port: parseInt(process.env.DB_PORT, 10) || 5432,
+//   user: process.env.DB_USER,
+//   password: process.env.DB_PASSWORD,
+//   database: process.env.DB_NAME,
+//   ssl: { rejectUnauthorized: false }
+// });
 
 /**
  * Veritabanı bağlantısını test eder.
@@ -25,12 +30,12 @@ const pool = mysql.createPool({
  */
 async function testConnection() {
   try {
-    const connection = await pool.getConnection();
-    console.log('✅ MySQL veritabanına başarıyla bağlanıldı.');
-    connection.release();
+    const client = await pool.connect();
+    console.log('✅ PostgreSQL (Supabase) veritabanına başarıyla bağlanıldı.');
+    client.release();
     return true;
   } catch (error) {
-    console.error('❌ MySQL bağlantı hatası:', error.message);
+    console.error('❌ PostgreSQL bağlantı hatası:', error.message);
     return false;
   }
 }

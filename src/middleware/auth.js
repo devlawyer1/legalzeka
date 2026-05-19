@@ -28,11 +28,11 @@ async function authenticate(req, res, next) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // 3. Kullanıcının hala aktif olup olmadığını kontrol et
-    const [users] = await pool.query(
+    const { rows: users } = await pool.query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, r.role_name
        FROM Users u
        JOIN Roles r ON u.role_id = r.id
-       WHERE u.id = ?`,
+       WHERE u.id = $1`,
       [decoded.userId]
     );
 
@@ -121,11 +121,11 @@ async function optionalAuthenticate(req, res, next) {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const [users] = await pool.query(
+    const { rows: users } = await pool.query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, r.role_name
        FROM Users u
        JOIN Roles r ON u.role_id = r.id
-       WHERE u.id = ?`,
+       WHERE u.id = $1`,
       [decoded.userId]
     );
 

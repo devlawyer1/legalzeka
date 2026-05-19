@@ -19,9 +19,9 @@ class User {
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const [result] = await pool.query(
+    await pool.query(
       `INSERT INTO Users (id, role_id, first_name, last_name, email, password_hash, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`,
+       VALUES ($1, $2, $3, $4, $5, $6, true)`,
       [id, roleId, firstName, lastName, email, passwordHash]
     );
 
@@ -41,11 +41,11 @@ class User {
    * @returns {Promise<Object|null>}
    */
   static async findByEmail(email) {
-    const [rows] = await pool.query(
+    const { rows } = await pool.query(
       `SELECT u.*, r.role_name
        FROM Users u
        JOIN Roles r ON u.role_id = r.id
-       WHERE u.email = ?`,
+       WHERE u.email = $1`,
       [email]
     );
     return rows.length > 0 ? rows[0] : null;
@@ -57,12 +57,12 @@ class User {
    * @returns {Promise<Object|null>}
    */
   static async findById(id) {
-    const [rows] = await pool.query(
+    const { rows } = await pool.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.is_active, u.created_at,
               r.role_name
        FROM Users u
        JOIN Roles r ON u.role_id = r.id
-       WHERE u.id = ?`,
+       WHERE u.id = $1`,
       [id]
     );
     return rows.length > 0 ? rows[0] : null;
@@ -84,8 +84,8 @@ class User {
    * @returns {Promise<boolean>}
    */
   static async emailExists(email) {
-    const [rows] = await pool.query(
-      'SELECT id FROM Users WHERE email = ?',
+    const { rows } = await pool.query(
+      'SELECT id FROM Users WHERE email = $1',
       [email]
     );
     return rows.length > 0;
@@ -98,7 +98,7 @@ class User {
    */
   static async updateProfile(id, { firstName, lastName }) {
     await pool.query(
-      'UPDATE Users SET first_name = ?, last_name = ? WHERE id = ?',
+      'UPDATE Users SET first_name = $1, last_name = $2 WHERE id = $3',
       [firstName, lastName, id]
     );
   }
@@ -111,7 +111,7 @@ class User {
   static async updatePassword(id, newPassword) {
     const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
     await pool.query(
-      'UPDATE Users SET password_hash = ? WHERE id = ?',
+      'UPDATE Users SET password_hash = $1 WHERE id = $2',
       [passwordHash, id]
     );
   }

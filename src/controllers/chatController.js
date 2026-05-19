@@ -18,7 +18,7 @@ async function createConversation(req, res) {
     const guestIp = !userId ? (req.ip || req.connection.remoteAddress) : null;
 
     await pool.query(
-      'INSERT INTO Conversations (id, user_id, guest_ip) VALUES (?, ?, ?)',
+      'INSERT INTO Conversations (id, user_id, guest_ip) VALUES ($1, $2, $3)',
       [id, userId, guestIp]
     );
 
@@ -43,15 +43,17 @@ async function getConversations(req, res) {
 
     let rows;
     if (userId) {
-      [rows] = await pool.query(
-        'SELECT id, title, created_at, updated_at FROM Conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50',
+      const result = await pool.query(
+        'SELECT id, title, created_at, updated_at FROM Conversations WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 50',
         [userId]
       );
+      rows = result.rows;
     } else {
-      [rows] = await pool.query(
-        'SELECT id, title, created_at, updated_at FROM Conversations WHERE guest_ip = ? AND user_id IS NULL ORDER BY updated_at DESC LIMIT 10',
+      const result = await pool.query(
+        'SELECT id, title, created_at, updated_at FROM Conversations WHERE guest_ip = $1 AND user_id IS NULL ORDER BY updated_at DESC LIMIT 10',
         [guestIp]
       );
+      rows = result.rows;
     }
 
     res.json({ success: true, data: rows });
@@ -69,8 +71,8 @@ async function getMessages(req, res) {
   try {
     const { id } = req.params;
 
-    const [messages] = await pool.query(
-      'SELECT id, role, content, tool_used, created_at FROM Messages WHERE conversation_id = ? ORDER BY created_at ASC',
+    const { rows: messages } = await pool.query(
+      'SELECT id, role, content, tool_used, created_at FROM Messages WHERE conversation_id = $1 ORDER BY created_at ASC',
       [id]
     );
 
@@ -95,20 +97,20 @@ async function sendMessage(req, res) {
     }
 
     // 1. Sohbetin var olduğunu kontrol et
-    const [convs] = await pool.query('SELECT id FROM Conversations WHERE id = ?', [id]);
+    const { rows: convs } = await pool.query('SELECT id FROM Conversations WHERE id = $1', [id]);
     if (convs.length === 0) {
       return res.status(404).json({ success: false, message: 'Sohbet bulunamadı.' });
     }
 
     // 2. Kullanıcı mesajını kaydet
     await pool.query(
-      'INSERT INTO Messages (conversation_id, role, content) VALUES (?, ?, ?)',
+      'INSERT INTO Messages (conversation_id, role, content) VALUES ($1, $2, $3)',
       [id, 'user', message.trim()]
     );
 
     // 3. Önceki mesaj geçmişini al (son 20 mesaj — bağlam penceresi)
-    const [history] = await pool.query(
-      'SELECT role, content FROM Messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 20',
+    const { rows: history } = await pool.query(
+      'SELECT role, content FROM Messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20',
       [id]
     );
 
@@ -120,13 +122,13 @@ async function sendMessage(req, res) {
 
     // 5. AI yanıtını kaydet
     await pool.query(
-      'INSERT INTO Messages (conversation_id, role, content) VALUES (?, ?, ?)',
+      'INSERT INTO Messages (conversation_id, role, content) VALUES ($1, $2, $3)',
       [id, 'assistant', aiResponse]
     );
 
     // 6. Sohbet başlığını ilk mesajdan otomatik güncelle
-    const [msgCount] = await pool.query(
-      'SELECT COUNT(*) as cnt FROM Messages WHERE conversation_id = ?',
+    const { rows: msgCount } = await pool.query(
+      'SELECT COUNT(*) as cnt FROM Messages WHERE conversation_id = $1',
       [id]
     );
     if (msgCount[0].cnt <= 2) {
@@ -135,12 +137,12 @@ async function sendMessage(req, res) {
         ? message.trim().substring(0, 60) + '...' 
         : message.trim();
       await pool.query(
-        'UPDATE Conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE Conversations SET title = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
         [title, id]
       );
     } else {
       await pool.query(
-        'UPDATE Conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE Conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
         [id]
       );
     }
@@ -169,7 +171,7 @@ async function sendMessage(req, res) {
 async function deleteConversation(req, res) {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM Conversations WHERE id = ?', [id]);
+    await pool.query('DELETE FROM Conversations WHERE id = $1', [id]);
     res.json({ success: true, message: 'Sohbet silindi.' });
   } catch (error) {
     console.error('Sohbet silme hatası:', error);
@@ -194,20 +196,20 @@ async function sendMessageStream(req, res) {
     }
 
     // 1. Sohbetin var olduğunu kontrol et
-    const [convs] = await pool.query('SELECT id FROM Conversations WHERE id = ?', [id]);
+    const { rows: convs } = await pool.query('SELECT id FROM Conversations WHERE id = $1', [id]);
     if (convs.length === 0) {
       return res.status(404).json({ success: false, message: 'Sohbet bulunamadı.' });
     }
 
     // 2. Kullanıcı mesajını kaydet
     await pool.query(
-      'INSERT INTO Messages (conversation_id, role, content) VALUES (?, ?, ?)',
+      'INSERT INTO Messages (conversation_id, role, content) VALUES ($1, $2, $3)',
       [id, 'user', message.trim()]
     );
 
     // 3. Önceki mesaj geçmişini al
-    const [history] = await pool.query(
-      'SELECT role, content FROM Messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 20',
+    const { rows: history } = await pool.query(
+      'SELECT role, content FROM Messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20',
       [id]
     );
     const conversationHistory = history.slice(0, -1);
@@ -292,14 +294,14 @@ async function sendMessageStream(req, res) {
     // 6. AI yanıtını DB'ye kaydet
     if (fullResponse.trim()) {
       await pool.query(
-        'INSERT INTO Messages (conversation_id, role, content) VALUES (?, ?, ?)',
+        'INSERT INTO Messages (conversation_id, role, content) VALUES ($1, $2, $3)',
         [id, 'assistant', fullResponse.trim()]
       );
     }
 
     // 7. Sohbet başlığını güncelle (ilk mesajsa)
-    const [msgCount] = await pool.query(
-      'SELECT COUNT(*) as cnt FROM Messages WHERE conversation_id = ?',
+    const { rows: msgCount } = await pool.query(
+      'SELECT COUNT(*) as cnt FROM Messages WHERE conversation_id = $1',
       [id]
     );
     if (msgCount[0].cnt <= 2) {
@@ -307,12 +309,12 @@ async function sendMessageStream(req, res) {
         ? message.trim().substring(0, 60) + '...' 
         : message.trim();
       await pool.query(
-        'UPDATE Conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE Conversations SET title = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
         [title, id]
       );
     } else {
       await pool.query(
-        'UPDATE Conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE Conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
         [id]
       );
     }

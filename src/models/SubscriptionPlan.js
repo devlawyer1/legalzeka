@@ -12,8 +12,8 @@ class SubscriptionPlan {
    * @returns {Promise<Object|null>}
    */
   static async findByName(planName) {
-    const [rows] = await pool.query(
-      'SELECT * FROM SubscriptionPlans WHERE plan_name = ?',
+    const { rows } = await pool.query(
+      'SELECT * FROM SubscriptionPlans WHERE plan_name = $1',
       [planName]
     );
     return rows.length > 0 ? rows[0] : null;
@@ -25,8 +25,8 @@ class SubscriptionPlan {
    * @returns {Promise<Object|null>}
    */
   static async findById(id) {
-    const [rows] = await pool.query(
-      'SELECT * FROM SubscriptionPlans WHERE id = ?',
+    const { rows } = await pool.query(
+      'SELECT * FROM SubscriptionPlans WHERE id = $1',
       [id]
     );
     return rows.length > 0 ? rows[0] : null;
@@ -37,7 +37,7 @@ class SubscriptionPlan {
    * @returns {Promise<Array>}
    */
   static async findAll() {
-    const [rows] = await pool.query('SELECT * FROM SubscriptionPlans ORDER BY price ASC');
+    const { rows } = await pool.query('SELECT * FROM SubscriptionPlans ORDER BY price ASC');
     return rows;
   }
 }

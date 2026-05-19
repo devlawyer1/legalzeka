@@ -17,15 +17,15 @@ async function guestQuota(req, res, next) {
 
     const ipAddress = req.ip || req.connection.remoteAddress;
 
-    const [rows] = await pool.query(
-      'SELECT search_count, last_search_at FROM GuestSearches WHERE ip_address = ?',
+    const { rows } = await pool.query(
+      'SELECT search_count, last_search_at FROM GuestSearches WHERE ip_address = $1',
       [ipAddress]
     );
 
     if (rows.length === 0) {
       // İlk kez arama yapıyor
       await pool.query(
-        'INSERT INTO GuestSearches (ip_address, search_count) VALUES (?, 1)',
+        'INSERT INTO GuestSearches (ip_address, search_count) VALUES ($1, 1)',
         [ipAddress]
       );
       req.subscription = {
@@ -44,7 +44,7 @@ async function guestQuota(req, res, next) {
     // Eğer son aramadan bu yana 24 saat geçmişse, kotayı sıfırla
     if (hoursSinceLastSearch > 24) {
       await pool.query(
-        'UPDATE GuestSearches SET search_count = 1, last_search_at = CURRENT_TIMESTAMP WHERE ip_address = ?',
+        'UPDATE GuestSearches SET search_count = 1, last_search_at = CURRENT_TIMESTAMP WHERE ip_address = $1',
         [ipAddress]
       );
       req.subscription = {
@@ -66,7 +66,7 @@ async function guestQuota(req, res, next) {
 
     // Kota dolmamışsa artır
     await pool.query(
-      'UPDATE GuestSearches SET search_count = search_count + 1, last_search_at = CURRENT_TIMESTAMP WHERE ip_address = ?',
+      'UPDATE GuestSearches SET search_count = search_count + 1, last_search_at = CURRENT_TIMESTAMP WHERE ip_address = $1',
       [ipAddress]
     );
 

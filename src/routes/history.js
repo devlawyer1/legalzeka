@@ -15,8 +15,8 @@ const { authenticate } = require('../middleware/auth');
  */
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const [rows] = await pool.query(
-      'SELECT id, query, search_type, created_at FROM SearchHistory WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+    const { rows } = await pool.query(
+      'SELECT id, query, search_type, created_at FROM SearchHistory WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
       [req.user.id]
     );
 
@@ -36,7 +36,7 @@ router.get('/', authenticate, async (req, res, next) => {
  */
 router.delete('/', authenticate, async (req, res, next) => {
   try {
-    await pool.query('DELETE FROM SearchHistory WHERE user_id = ?', [req.user.id]);
+    await pool.query('DELETE FROM SearchHistory WHERE user_id = $1', [req.user.id]);
 
     res.status(200).json({
       success: true,
@@ -56,12 +56,12 @@ router.delete('/:id', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const [result] = await pool.query(
-      'DELETE FROM SearchHistory WHERE id = ? AND user_id = ?',
+    const { rowCount } = await pool.query(
+      'DELETE FROM SearchHistory WHERE id = $1 AND user_id = $2',
       [id, req.user.id]
     );
 
-    if (result.affectedRows === 0) {
+    if (rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Geçmiş kaydı bulunamadı veya yetkiniz yok.' });
     }
 

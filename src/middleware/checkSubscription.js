@@ -38,14 +38,14 @@ async function checkSubscription(req, res, next) {
     }
 
     // 2. Kullanıcının aktif ve süresi dolmamış aboneliğini sorgula
-    const [subscriptions] = await pool.query(
+    const { rows: subscriptions } = await pool.query(
       `SELECT us.id, us.plan_id, us.start_date, us.end_date, us.is_active,
               sp.plan_name, sp.max_search_limit, sp.price
        FROM UserSubscriptions us
        JOIN SubscriptionPlans sp ON us.plan_id = sp.id
-       WHERE us.user_id = ?
-         AND us.is_active = 1
-         AND us.end_date >= CURDATE()
+       WHERE us.user_id = $1
+         AND us.is_active = true
+         AND us.end_date >= CURRENT_DATE
        ORDER BY us.end_date DESC
        LIMIT 1`,
       [req.user.id]
