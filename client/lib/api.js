@@ -156,6 +156,51 @@ export async function askAI(query) {
   });
 }
 
+// ======================== Analysis (AI Tools) ========================
+
+async function requestFormData(endpoint, formData) {
+  const url = `${API_BASE}${endpoint}`;
+  const headers = {};
+
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    if (response.status === 401) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("user");
+        localStorage.removeItem("subscription");
+        window.location.href = "/auth";
+      }
+    }
+    const error = new Error(data.message || "Bir hata oluştu");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export async function analyzeDevilsAdvocate(formData) {
+  return requestFormData("/analysis/devils-advocate", formData);
+}
+
+export async function analyzeContract(formData) {
+  return requestFormData("/analysis/contract-review", formData);
+}
+
 // ======================== Subscriptions ========================
 
 export async function getPlans() {

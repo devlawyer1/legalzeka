@@ -7,6 +7,14 @@ import { useState } from "react";
    Apple/Linear style minimal sidebar navigation
    ============================================================ */
 
+const aiIcon = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
+    <path d="M12 12 2.1 12" />
+    <path d="M12 12l8.5 4.9" />
+  </svg>
+);
+
 const calcIcon = (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
     <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
@@ -73,10 +81,38 @@ const calculatorSubItems = [
   },
 ];
 
+const aiToolsSubItems = [
+  {
+    id: "devils_advocate",
+    label: "Şeytanın Avukatı",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+      </svg>
+    ),
+  },
+  {
+    id: "contract_review",
+    label: "Sözleşme İnceleme",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="16" y1="13" x2="8" y2="13" />
+        <line x1="16" y1="17" x2="8" y2="17" />
+        <polyline points="10 9 9 9 8 9" />
+      </svg>
+    ),
+  },
+];
+
 export default function Sidebar({ user, activePage, onNavigate, collapsed, onToggle }) {
   const [calcOpen, setCalcOpen] = useState(false);
+  const [aiToolsOpen, setAiToolsOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const isCalcActive = calculatorSubItems.some((i) => i.id === activePage);
+  const isAiToolsActive = aiToolsSubItems.some((i) => i.id === activePage);
 
   const menuItems = [
     {
@@ -127,29 +163,6 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
         </svg>
       ),
     },
-    {
-      id: "subscription",
-      label: "Abonelik",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="5" width="14" height="11" rx="2" />
-          <path d="M3 9h14" />
-        </svg>
-      ),
-    },
-  ];
-
-  const bottomItems = [
-    {
-      id: "settings",
-      label: "Ayarlar",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      ),
-    },
   ];
 
   const initials = user
@@ -159,8 +172,19 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
   return (
     <aside style={{ ...styles.sidebar, width: collapsed ? 72 : 260 }}>
       {/* Logo & Toggle */}
-      <div style={styles.logoSection}>
-        <button onClick={onToggle} style={styles.hamburgerBtn} title={collapsed ? "Menüyü Genişlet" : "Menüyü Daralt"}>
+      <div style={{
+        ...styles.logoSection,
+        justifyContent: collapsed ? "center" : "flex-start",
+        padding: collapsed ? "16px 0" : "16px 20px"
+      }}>
+        <button 
+          onClick={onToggle} 
+          style={{
+            ...styles.hamburgerBtn,
+            marginLeft: collapsed ? 0 : "-6px"
+          }} 
+          title={collapsed ? "Menüyü Genişlet" : "Menüyü Daralt"}
+        >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="3" y1="12" x2="21" y2="12"></line>
             <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -198,6 +222,52 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
               {!collapsed && <span style={styles.navText}>{item.label}</span>}
             </button>
           ))}
+
+          {/* AI Tools Accordion */}
+          <button
+            onClick={() => collapsed ? onNavigate("devils_advocate") : setAiToolsOpen((o) => !o)}
+            style={{
+              ...styles.navItem,
+              ...(isAiToolsActive ? styles.navItemActive : {}),
+              justifyContent: collapsed ? "center" : "flex-start",
+              padding: collapsed ? "10px" : "9px 12px",
+            }}
+            title={collapsed ? "Yapay Zeka Araçları" : undefined}
+          >
+            <span style={styles.navIcon}>{aiIcon}</span>
+            {!collapsed && (
+              <>
+                <span style={{ ...styles.navText, flex: 1 }}>AI Araçları</span>
+                <svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ flexShrink: 0, transition: "transform 0.2s", transform: aiToolsOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </>
+            )}
+          </button>
+
+          {/* AI Tools Sub-items */}
+          {!collapsed && aiToolsOpen && (
+            <div style={styles.subGroup}>
+              {aiToolsSubItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => onNavigate(item.id)}
+                  style={{
+                    ...styles.navItem,
+                    ...styles.subItem,
+                    ...(activePage === item.id ? styles.navItemActive : {}),
+                  }}
+                >
+                  <span style={{ ...styles.navIcon, width: 16, height: 16 }}>{item.icon}</span>
+                  <span style={styles.navText}>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Hesaplamalar Accordion */}
           <button
@@ -247,42 +317,72 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
         </div>
       </nav>
 
-      {/* Bottom */}
-      <div style={styles.bottom}>
-        {bottomItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => onNavigate(item.id)}
-            style={{
-              ...styles.navItem,
-              ...(activePage === item.id ? styles.navItemActive : {}),
-              justifyContent: collapsed ? "center" : "flex-start",
-              padding: collapsed ? "10px" : "9px 12px",
-            }}
-            title={collapsed ? item.label : undefined}
-          >
-            <span style={styles.navIcon}>{item.icon}</span>
-            {!collapsed && <span style={styles.navText}>{item.label}</span>}
-          </button>
-        ))}
+      {/* Bottom — User profile */}
+      <div style={{...styles.bottom, position: "relative"}}>
 
-        {/* User profile or Guest login */}
+        {/* User dropdown popup */}
+        {userMenuOpen && user && (
+          <div style={styles.userDropdown} className="animate-fade-in">
+            {/* Email */}
+            <div style={styles.dropdownEmail}>{user?.email}</div>
+            <div style={styles.dropdownDivider} />
+
+            {/* Ayarlar */}
+            <button onClick={() => { onNavigate("settings"); setUserMenuOpen(false); }} style={styles.dropdownItem}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span>Ayarlar</span>
+            </button>
+
+            {/* Abonelik */}
+            <button onClick={() => { onNavigate("subscription"); setUserMenuOpen(false); }} style={styles.dropdownItem}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M3 10h18" />
+              </svg>
+              <span>Abonelik</span>
+            </button>
+
+            <div style={styles.dropdownDivider} />
+
+            {/* Çıkış Yap */}
+            <button onClick={() => { if (typeof window !== "undefined") { localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken"); localStorage.removeItem("user"); localStorage.removeItem("subscription"); window.location.href = "/auth"; } }} style={styles.dropdownItem}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Çıkış Yap</span>
+            </button>
+          </div>
+        )}
+
+        {/* Clickable user card */}
         {user ? (
           <div
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
             style={{
               ...styles.userCard,
               justifyContent: collapsed ? "center" : "flex-start",
               padding: collapsed ? "10px" : "10px 12px",
+              cursor: "pointer",
             }}
           >
             <div style={styles.avatar}>{initials}</div>
             {!collapsed && (
-              <div style={styles.userInfo}>
-                <span style={styles.userName}>
-                  {user?.firstName} {user?.lastName}
-                </span>
-                <span style={styles.userEmail}>{user?.email}</span>
-              </div>
+              <>
+                <div style={{...styles.userInfo, flex: 1}}>
+                  <span style={styles.userName}>
+                    {user?.firstName} {user?.lastName}
+                  </span>
+                  <span style={styles.userEmail}>Ücretsiz plan</span>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                </svg>
+              </>
             )}
           </div>
         ) : (
@@ -489,5 +589,45 @@ const styles = {
     justifyContent: "flex-start",
     padding: "7px 10px",
     fontSize: 13,
+  },
+  userDropdown: {
+    position: "absolute",
+    bottom: "100%",
+    left: 10,
+    right: 10,
+    marginBottom: 8,
+    background: "var(--color-bg-elevated)",
+    border: "1px solid var(--color-border)",
+    borderRadius: 12,
+    boxShadow: "0 8px 30px rgba(0,0,0,0.15)",
+    zIndex: 200,
+    overflow: "hidden",
+  },
+  dropdownEmail: {
+    padding: "12px 14px 8px",
+    fontSize: 13,
+    color: "var(--color-text-tertiary)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  dropdownDivider: {
+    height: 1,
+    background: "var(--color-border-subtle)",
+    margin: "4px 0",
+  },
+  dropdownItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    padding: "10px 14px",
+    border: "none",
+    background: "transparent",
+    color: "var(--color-text-primary)",
+    fontSize: 14,
+    cursor: "pointer",
+    textAlign: "left",
+    transition: "background 0.15s",
   },
 };

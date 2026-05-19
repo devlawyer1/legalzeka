@@ -127,3 +127,26 @@ VALUES
   ('Profesyonel', 500, 249.90, 30),
   ('Kurumsal', -1, 499.90, 30)
 ON CONFLICT (plan_name) DO NOTHING;
+
+-- ============================================================
+-- 10. Emsal Kararlar (VectorDB) Tablosu
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS vector;
+
+DROP TABLE IF EXISTS emsal_kararlar CASCADE;
+
+CREATE TABLE emsal_kararlar (
+  id SERIAL PRIMARY KEY,
+  karar_no VARCHAR(100),
+  karar_yili INT,
+  mahkeme VARCHAR(255),
+  konu TEXT,
+  ozet TEXT,
+  metin TEXT,
+  anahtar_kelimeler TEXT[],
+  embedding vector(384),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Metin araması için indeks (Full-Text Search)
+CREATE INDEX idx_emsal_kararlar_fts ON emsal_kararlar USING GIN (to_tsvector('turkish', coalesce(konu, '') || ' ' || coalesce(ozet, '') || ' ' || coalesce(metin, '')));

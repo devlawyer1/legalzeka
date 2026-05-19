@@ -9,6 +9,8 @@ import FeeCalculator from "@/components/dashboard/FeeCalculator";
 import TermCalculator from "@/components/dashboard/TermCalculator";
 import LaborCalculator from "@/components/dashboard/LaborCalculator";
 import AIChat from "@/components/dashboard/AIChat";
+import DevilsAdvocate from "@/components/dashboard/DevilsAdvocate";
+import ContractReview from "@/components/dashboard/ContractReview";
 import { getStoredUser, isAuthenticated, logout, searchKeyword, searchSemantic, askAI, getMySubscription, getHistory, clearHistory, deleteHistory, updateProfile, updatePassword, updateStoredUser, getNotes, addNote, deleteNote, updateNote } from "@/lib/api";
 
 /* ============================================================
@@ -250,6 +252,8 @@ export default function DashboardPage() {
               {activePage === "recent" && "Son Aramalar"}
               {activePage === "saved" && "Kaydedilenler"}
               {activePage === "notes" && "Notlarım"}
+              {activePage === "devils_advocate" && "Şeytanın Avukatı"}
+              {activePage === "contract_review" && "Sözleşme İnceleme"}
               {activePage === "calculator" && "İnfaz Hesaplama"}
               {activePage === "fee_calculator" && "Harç & Vekalet Hesaplama"}
               {activePage === "term_calculator" && "Süre Hesaplama"}
@@ -258,23 +262,7 @@ export default function DashboardPage() {
               {activePage === "settings" && "Ayarlar"}
             </h2>
           </div>
-          <div style={styles.topBarRight}>
-            {user ? (
-              <button onClick={logout} style={styles.logoutBtn}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 14H3.5A1.5 1.5 0 012 12.5v-9A1.5 1.5 0 013.5 2H6M11 11l3-3-3-3M14 8H6" />
-                </svg>
-                Çıkış
-              </button>
-            ) : (
-              <button onClick={() => router.push("/auth")} style={styles.logoutBtn}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10 2h3a1 1 0 011 1v10a1 1 0 01-1 1h-3M7 11l3-3-3-3M10 8H2" />
-                </svg>
-                Giriş Yap
-              </button>
-            )}
-          </div>
+          <div style={styles.topBarRight} />
         </header>
 
         {/* Content Area */}
@@ -640,6 +628,28 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {activePage === "devils_advocate" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <DevilsAdvocate onSaveNote={(text) => {
+                  const newNote = addNote(text, "ai");
+                  setNotes(getNotes());
+                  setActiveNoteId(newNote.id);
+                  alert("Yapay zeka analizi notlarınıza eklendi!");
+              }} />
+            </div>
+          )}
+
+          {activePage === "contract_review" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <ContractReview onSaveNote={(text) => {
+                  const newNote = addNote(text, "ai");
+                  setNotes(getNotes());
+                  setActiveNoteId(newNote.id);
+                  alert("Sözleşme analizi notlarınıza eklendi!");
+              }} />
             </div>
           )}
 
