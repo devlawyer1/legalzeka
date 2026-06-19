@@ -9,6 +9,8 @@ const CANDIDATE_MULTIPLIER = 3;
 const RRF_K = 60;
 const MCP_TIMEOUT_MS = parseInt(process.env.EMSAL_MCP_SOURCE_TIMEOUT_MS || '16000', 10);
 const MCP_VERIFY_LIMIT = parseInt(process.env.EMSAL_MCP_VERIFY_LIMIT || '8', 10);
+const FAMILY_MCP_VERIFY_LIMIT = parseInt(process.env.EMSAL_FAMILY_MCP_VERIFY_LIMIT || '6', 10);
+const MCP_VERIFY_CONCURRENCY = parseInt(process.env.EMSAL_MCP_VERIFY_CONCURRENCY || '2', 10);
 const LOCAL_VECTOR_MIN_SCORE = parseFloat(process.env.EMSAL_VECTOR_MIN_SCORE || '0.62');
 const MIN_DOCUMENT_TEXT_LENGTH = 80;
 const CURRENT_YEAR = new Date().getFullYear();
@@ -153,6 +155,104 @@ function satisfiesRequiredPhrases(query, result) {
   if (groups.length === 0) return true;
   const haystack = buildSearchableText(result, true);
   return groups.every((group) => group.some((phrase) => haystack.includes(phrase)));
+}
+
+function queryIntentProfile(query) {
+  const normalized = normalizeForMatch(query);
+
+  if (/(^|\s)(boşanma|bosanma|zina|nafaka|velayet|mal rejimi|evlilik birliği)(\s|$)/i.test(normalized)) {
+    return {
+      name: 'family_law',
+      strongPatterns: [
+        /aile mahkemesi/i,
+        /davanın konusu\s*:?\s*boşanma/i,
+        /davanin konusu\s*:?\s*bosanma/i,
+        /dava türü\s*:?\s*(karşılıklı\s*)?boşanma/i,
+        /dava turu\s*:?\s*(karsilikli\s*)?bosanma/i,
+        /boşanma davas/i,
+        /bosanma davas/i,
+        /karşılıklı boşanma/i,
+        /karsilikli bosanma/i,
+        /evlilik birliğinin/i,
+        /evlilik birliginin/i,
+        /türk medeni kanunu/i,
+        /\btmk\b/i,
+        /nafaka/i,
+        /velayet/i,
+        /mal rejimi/i,
+        /zina/i,
+        /kusur/i,
+      ],
+      primaryPatterns: [
+        /dava türü\s*:?\s*(karşılıklı\s*)?(boşanma|nafaka|velayet|mal rejimi|zina)/i,
+        /dava turu\s*:?\s*(karsilikli\s*)?(bosanma|nafaka|velayet|mal rejimi|zina)/i,
+        /davanın konusu\s*:?\s*(boşanma|nafaka|velayet|mal rejimi|zina)/i,
+        /davanin konusu\s*:?\s*(bosanma|nafaka|velayet|mal rejimi|zina)/i,
+        /mahkemesi\s*:?\s*.{0,120}aile mahkemesi/i,
+        /ilk derece mahkemesi\s*:?\s*.{0,120}aile mahkemesi/i,
+        /taraflar arasındaki\s*.{0,160}(boşanma|nafaka|velayet|mal rejimi)\s+davas/i,
+        /taraflar arasindaki\s*.{0,160}(bosanma|nafaka|velayet|mal rejimi)\s+davas/i,
+      ],
+      misleadingPatterns: [
+        /taraflar arasındaki\s*.{0,80}tazminat davasından/i,
+        /taraflar arasindaki\s*.{0,80}tazminat davasindan/i,
+        /hakimin hukuki sorumluluğu/i,
+        /hakimin hukuki sorumlulugu/i,
+      ],
+      excludePatterns: [
+        /asliye ticaret mahkemesi/i,
+        /fikri ve sınai haklar/i,
+        /fikri ve sinai haklar/i,
+        /marka/i,
+        /şirket/i,
+        /sirket/i,
+        /itirazın iptali/i,
+        /itirazin iptali/i,
+        /trafik sigorta/i,
+        /rücuen/i,
+        /rucuen/i,
+        /ihyası/i,
+        /ihyasi/i,
+      ],
+    };
+  }
+
+  return null;
+}
+
+function countPatternMatches(patterns, text) {
+  return patterns.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+}
+
+function leadingFullText(result, maxLength = 2600) {
+  return normalizeForMatch(String(result.metin || '').slice(0, maxLength));
+}
+
+function satisfiesQueryIntent(query, result) {
+  const profile = queryIntentProfile(query);
+  if (!profile) return true;
+
+  const metadataText = buildSearchableText(result, false);
+  const leadingText = `${metadataText} ${leadingFullText(result)}`;
+  const headerText = `${metadataText} ${leadingFullText(result, 1200)}`;
+  const strongMatches = countPatternMatches(profile.strongPatterns, leadingText);
+  const primaryMatches = countPatternMatches(profile.primaryPatterns || [], headerText);
+  const misleadingMatches = countPatternMatches(profile.misleadingPatterns || [], headerText);
+  const excludeMatches = countPatternMatches(profile.excludePatterns, leadingText);
+  const queryTermsInMetadata = meaningfulTerms(query).filter((term) => metadataText.includes(term)).length;
+
+  if (profile.name === 'family_law') {
+    if (misleadingMatches > 0 && primaryMatches === 0) return false;
+    if (primaryMatches === 0) return false;
+    if (excludeMatches > 0 && primaryMatches < 2 && strongMatches < 3) return false;
+    return true;
+  }
+
+  if (strongMatches >= 2) return true;
+  if (strongMatches >= 1 && excludeMatches === 0) return true;
+  if (queryTermsInMetadata > 0 && strongMatches >= 1 && excludeMatches <= 1) return true;
+
+  return false;
 }
 
 function validateDateText(dateText) {
@@ -308,7 +408,8 @@ async function localKeywordSearch(query, filters, limit) {
 
   return result.rows
     .map((row) => normalizeLocalRow(row, 'local_fts', query))
-    .filter((row) => satisfiesRequiredPhrases(query, row));
+    .filter((row) => satisfiesRequiredPhrases(query, row))
+    .filter((row) => satisfiesQueryIntent(query, row));
 }
 
 async function localVectorSearch(query, filters, limit) {
@@ -332,12 +433,18 @@ async function localVectorSearch(query, filters, limit) {
   return result.rows
     .filter((row) => Number(row.score || 0) >= LOCAL_VECTOR_MIN_SCORE)
     .map((row) => normalizeLocalRow(row, 'local_vector', query))
-    .filter((row) => satisfiesRequiredPhrases(query, row));
+    .filter((row) => satisfiesRequiredPhrases(query, row))
+    .filter((row) => satisfiesQueryIntent(query, row));
 }
 
 function routeSources(query, requestedSources) {
   if (requestedSources && requestedSources.length > 0) {
     return [...new Set(requestedSources.map((source) => source.trim()).filter(Boolean))];
+  }
+
+  const profile = queryIntentProfile(query);
+  if (profile?.name === 'family_law') {
+    return ['bedesten'];
   }
 
   const routed = new Set(['bedesten', 'emsal']);
@@ -350,20 +457,71 @@ function routeSources(query, requestedSources) {
   return [...routed].slice(0, 5);
 }
 
+function familyLawMcpQueries(query) {
+  const normalized = normalizeForMatch(query);
+  const queries = [query];
+
+  if (/(^|\s)(boşanma|bosanma)(\s|$)/i.test(normalized)) {
+    queries.push('boşanma');
+    queries.push('evlilik birliğinin temelinden sarsılması');
+  }
+  if (/(^|\s)zina(\s|$)/i.test(normalized)) {
+    queries.push('zina nedeniyle boşanma');
+  }
+  if (/(^|\s)nafaka(\s|$)/i.test(normalized)) {
+    queries.push('boşanma nafaka');
+  }
+  if (/(^|\s)velayet(\s|$)/i.test(normalized)) {
+    queries.push('boşanma velayet');
+  }
+
+  return [...new Set(queries.map((item) => normalizeQuery(item)).filter(Boolean))].slice(0, 3);
+}
+
+function mcpQueryForSource(query) {
+  const profile = queryIntentProfile(query);
+  if (profile?.name !== 'family_law') return query;
+
+  const normalized = normalizeForMatch(query);
+  const alreadyContextual = /aile mahkemesi|evlilik birliği|evlilik birlig(i|ı)|türk medeni kanunu|\btmk\b|nafaka|velayet|mal rejimi|kusur|zina/i.test(normalized);
+  if (alreadyContextual) return query;
+
+  return `${query} aile mahkemesi evlilik birliği`;
+}
+
 function buildMcpCalls(source, query, filters) {
   const isoStart = toIsoDate(filters.yilMin, false);
   const isoEnd = toIsoDate(filters.yilMax, true);
   const emsalStart = toEmsalDate(filters.yilMin, false);
   const emsalEnd = toEmsalDate(filters.yilMax, true);
-  const keywords = tokenize(query).slice(0, 8);
+  const liveQuery = mcpQueryForSource(query);
+  const keywords = tokenize(liveQuery).slice(0, 8);
+  const profile = queryIntentProfile(query);
 
   switch (source) {
     case 'bedesten':
+      if (profile?.name === 'family_law') {
+        const familyQueries = familyLawMcpQueries(query);
+        const primaryPhrase = familyQueries[0] || query;
+        return [{
+          source,
+          toolName: 'search_bedesten_unified',
+          args: {
+            phrase: primaryPhrase,
+            court_types: ['YARGITAYKARARI'],
+            birimAdi: 'H2',
+            pageNumber: 1,
+            kararTarihiStart: isoStart,
+            kararTarihiEnd: isoEnd,
+          },
+        }];
+      }
+
       return [{
         source,
         toolName: 'search_bedesten_unified',
         args: {
-          phrase: query,
+          phrase: liveQuery,
           court_types: ['YARGITAYKARARI', 'DANISTAYKARAR', 'YERELHUKUK', 'ISTINAFHUKUK', 'KYB'],
           pageNumber: 1,
           kararTarihiStart: isoStart,
@@ -375,28 +533,29 @@ function buildMcpCalls(source, query, filters) {
         source,
         toolName: 'search_emsal_detailed_decisions',
         args: {
-          keyword: query,
+          keyword: liveQuery,
+          ...(profile?.name === 'family_law' ? { selected_civil_court: 'Aile Mahkemeleri' } : {}),
           page_number: 1,
           start_date: emsalStart,
           end_date: emsalEnd,
         },
       }];
     case 'gib':
-      return [{ source, toolName: 'search_gib_ozelge', args: { keywords: query, page: 1, pageSize: 10 } }];
+      return [{ source, toolName: 'search_gib_ozelge', args: { keywords: liveQuery, page: 1, pageSize: 10 } }];
     case 'rekabet':
-      return [{ source, toolName: 'search_rekabet_kurumu_decisions', args: { PdfText: query, page: 1 } }];
+      return [{ source, toolName: 'search_rekabet_kurumu_decisions', args: { PdfText: liveQuery, page: 1 } }];
     case 'kvkk':
-      return [{ source, toolName: 'search_kvkk_decisions', args: { keywords: query, page: 1 } }];
+      return [{ source, toolName: 'search_kvkk_decisions', args: { keywords: liveQuery, page: 1 } }];
     case 'bddk':
-      return [{ source, toolName: 'search_bddk_decisions', args: { keywords: query, page: 1 } }];
+      return [{ source, toolName: 'search_bddk_decisions', args: { keywords: liveQuery, page: 1 } }];
     case 'sigorta_tahkim':
-      return [{ source, toolName: 'search_sigorta_tahkim_decisions', args: { keywords: query, page: 1 } }];
+      return [{ source, toolName: 'search_sigorta_tahkim_decisions', args: { keywords: liveQuery, page: 1 } }];
     case 'kik':
-      return [{ source, toolName: 'search_kik_v2_decisions', args: { karar_metni: query } }];
+      return [{ source, toolName: 'search_kik_v2_decisions', args: { karar_metni: liveQuery } }];
     case 'sayistay':
       return [
-        { source, toolName: 'search_sayistay_unified', args: { decision_type: 'daire', web_karar_metni: query, length: 10 } },
-        { source, toolName: 'search_sayistay_unified', args: { decision_type: 'temyiz_kurulu', temyiz_karar: query, length: 10 } },
+        { source, toolName: 'search_sayistay_unified', args: { decision_type: 'daire', web_karar_metni: liveQuery, length: 10 } },
+        { source, toolName: 'search_sayistay_unified', args: { decision_type: 'temyiz_kurulu', temyiz_karar: liveQuery, length: 10 } },
       ];
     case 'anayasa':
       return [
@@ -404,7 +563,7 @@ function buildMcpCalls(source, query, filters) {
         { source, toolName: 'search_anayasa_unified', args: { decision_type: 'norm_denetimi', keywords_all: keywords, results_per_page: 10 } },
       ];
     case 'uyusmazlik':
-      return [{ source, toolName: 'search_uyusmazlik_decisions', args: { icerik: query } }];
+      return [{ source, toolName: 'search_uyusmazlik_decisions', args: { icerik: liveQuery } }];
     default:
       return [];
   }
@@ -511,16 +670,45 @@ function minimumMatchedTerms(query) {
   return 2;
 }
 
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      try {
+        results[currentIndex] = { status: 'fulfilled', value: await mapper(items[currentIndex], currentIndex) };
+      } catch (error) {
+        results[currentIndex] = { status: 'rejected', reason: error };
+      }
+    }
+  }));
+
+  return results;
+}
+
 function shouldKeepVerifiedMcpResult(query, result) {
   if (!result.metin || result.metin.trim().length < MIN_DOCUMENT_TEXT_LENGTH) return false;
   if (!satisfiesRequiredPhrases(query, result)) return false;
+  if (!satisfiesQueryIntent(query, result)) return false;
   if (hasExactIdentifierMatch(query, result)) return true;
   return (result.matched_terms || []).length >= minimumMatchedTerms(query);
 }
 
 async function verifyMcpResults(query, results) {
-  const candidates = results.slice(0, Math.max(1, MCP_VERIFY_LIMIT));
-  const settled = await Promise.allSettled(candidates.map(async (decision) => {
+  const profile = queryIntentProfile(query);
+  const verifyLimit = profile?.name === 'family_law'
+    ? Math.min(MCP_VERIFY_LIMIT, FAMILY_MCP_VERIFY_LIMIT)
+    : MCP_VERIFY_LIMIT;
+  const candidates = results.slice(0, Math.max(1, verifyLimit));
+  const hasBedesten = candidates.some((decision) => decision.source === 'bedesten');
+  const concurrency = hasBedesten
+    ? Math.min(Math.max(1, MCP_VERIFY_CONCURRENCY), 2)
+    : Math.max(1, MCP_VERIFY_CONCURRENCY);
+  const settled = await mapWithConcurrency(candidates, concurrency, async (decision) => {
     const document = await fetchDecisionDocument(decision);
     const fullText = document.text || '';
     if (!fullText || fullText.trim().length < MIN_DOCUMENT_TEXT_LENGTH) return null;
@@ -546,7 +734,7 @@ async function verifyMcpResults(query, results) {
       ...withRelevance,
       confidence: confidenceForResult(withRelevance, query, 'mcp_verified'),
     };
-  }));
+  });
 
   return settled
     .filter((entry) => entry.status === 'fulfilled' && entry.value)
@@ -559,8 +747,8 @@ function resultKey(result) {
   const esas = (result.esas_no || '').toLocaleLowerCase('tr-TR').trim();
   const date = (result.date || result.karar_yili || '').toString().slice(0, 10);
 
-  if (court && karar) return `${court}|${karar}|${esas}|${date}`;
   if (result.source && result.document_id) return `${result.source}|${result.document_id}`;
+  if (court && karar) return `${court}|${karar}|${esas}|${date}`;
   if (result.id) return `${result.source || 'unknown'}|${result.id}`;
   return `${result.source || 'unknown'}|${result.konu || result.snippet || Math.random()}`;
 }
