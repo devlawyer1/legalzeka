@@ -215,6 +215,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_emsal_kararlar_source_document
   ON emsal_kararlar (source, source_document_id)
   WHERE source_document_id IS NOT NULL;
 
+-- Eski demo/mock veriler arama sonuçlarında gerçek emsal gibi görünmemeli.
+DELETE FROM emsal_kararlar
+WHERE coalesce(ozet, '') ILIKE '%varyasyon%'
+   OR coalesce(metin, '') ILIKE '%varyasyon%'
+   OR source = 'demo';
+
 -- ============================================================
 -- Mod�l 2: Dava, ��, Duru�ma ve �leti�im Tablolar�
 -- ============================================================

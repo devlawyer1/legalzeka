@@ -9,6 +9,10 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const dummyKararlar = require('./mockData.json');
 
+function isTruthy(value) {
+  return ['true', '1', 'yes', 'evet'].includes(String(value || '').toLocaleLowerCase('tr-TR'));
+}
+
 async function seedDatabase() {
   console.log('🔄 PostgreSQL VectorDB migration başlatılıyor...\n');
 
@@ -22,12 +26,21 @@ async function seedDatabase() {
     // Supabase pgvector eklentisinin var olduğundan emin olalım (migration içinde var ama yine de önlem)
     await pool.query('CREATE EXTENSION IF NOT EXISTS vector;');
     
-    // Temiz başlangıç (isteğe bağlı, veriyi sıfırlamak için tabloyu boşaltabiliriz)
-    await pool.query('TRUNCATE TABLE emsal_kararlar RESTART IDENTITY CASCADE;');
+    if (isTruthy(process.env.EMSAL_SEED_TRUNCATE)) {
+      await pool.query('TRUNCATE TABLE emsal_kararlar RESTART IDENTITY CASCADE;');
+    }
 
     console.log("💾 Emsal kararlar PostgreSQL (Supabase) veritabanına yükleniyor...");
 
-    for (const karar of dummyKararlar) {
+    const seedDemoData = isTruthy(process.env.EMSAL_SEED_DEMO_DATA);
+    const seedRows = seedDemoData ? dummyKararlar : [];
+
+    if (!seedDemoData) {
+      console.log('ℹ️ Demo/mock emsal verisi yüklenmedi. Gerçek veri için MCP cache-first akışı kullanılacak.');
+      console.log('ℹ️ Demo veri gerekiyorsa EMSAL_SEED_DEMO_DATA=true ile çalıştırın.');
+    }
+
+    for (const karar of seedRows) {
       // Kelime bazlı arama ve RAG için birleşik bir metin içeriği
       const textToEmbed = `${karar.konu}. ${karar.ozet}`;
       const embedding = await generateEmbedding(textToEmbed);
@@ -37,8 +50,8 @@ async function seedDatabase() {
 
       await pool.query(
         `INSERT INTO emsal_kararlar 
-        (karar_no, karar_yili, mahkeme, konu, ozet, metin, anahtar_kelimeler, embedding) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        (karar_no, karar_yili, mahkeme, konu, ozet, metin, anahtar_kelimeler, source, verification_status, embedding) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'demo', 'demo', $8)`,
         [
           karar.karar_no,
           karar.karar_yili,

@@ -12,6 +12,7 @@ const MCP_VERIFY_LIMIT = parseInt(process.env.EMSAL_MCP_VERIFY_LIMIT || '8', 10)
 const LOCAL_VECTOR_MIN_SCORE = parseFloat(process.env.EMSAL_VECTOR_MIN_SCORE || '0.62');
 const MIN_DOCUMENT_TEXT_LENGTH = 80;
 const CURRENT_YEAR = new Date().getFullYear();
+const INCLUDE_DEMO_RESULTS = process.env.EMSAL_INCLUDE_DEMO_RESULTS === 'true';
 
 const QUERY_STOPWORDS = new Set([
   'bir', 've', 'ile', 'icin', 'için', 'gibi', 'olan', 'karar', 'emsal', 'dava',
@@ -214,6 +215,12 @@ function buildFilterWhere(filters = {}, startParam = 1) {
   const clauses = [];
   const params = [];
   let index = startParam;
+
+  if (!INCLUDE_DEMO_RESULTS) {
+    clauses.push("coalesce(source, 'local') <> 'demo'");
+    clauses.push("coalesce(ozet, '') NOT ILIKE '%varyasyon%'");
+    clauses.push("coalesce(metin, '') NOT ILIKE '%varyasyon%'");
+  }
 
   if (filters.mahkeme) {
     const courtFilter = normalizeForMatch(filters.mahkeme);
