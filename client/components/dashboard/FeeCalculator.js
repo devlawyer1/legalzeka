@@ -15,11 +15,23 @@ export default function FeeCalculator() {
     partyCount: 2, // Davalı/Davacı taraf sayısı (Gider avansı için)
   });
 
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const [result, setResult] = useState(null);
 
   const calculate = (e) => {
     e.preventDefault();
     const amountVal = parseFloat(form.amount) || 0;
+
+    if (amountVal < 0) {
+      showToast("Dava değeri negatif olamaz.");
+      return;
+    }
 
     if (form.calcType === "vekalet") {
       let maktu = 0;
@@ -272,6 +284,18 @@ export default function FeeCalculator() {
           )}
         </div>
       </div>
+
+      {/* Toast Bildirimi */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24, padding: "12px 20px",
+          background: toast.type === "error" ? "var(--color-error)" : "var(--color-success)",
+          color: "#fff", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          zIndex: 9999, animation: "slideIn 0.3s ease-out"
+        }}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

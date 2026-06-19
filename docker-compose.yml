@@ -1,34 +1,60 @@
 version: "3.8"
 
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: emsal_atlasi_mysql
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: emsal_atlasi_postgres
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: emsal_root_2026
-      MYSQL_DATABASE: emsal_atlasi
-      MYSQL_CHARSET: utf8mb4
-      MYSQL_COLLATION: utf8mb4_unicode_ci
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: emsal_atlasi
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - emsal_mysql_data:/var/lib/mysql
-      - ./src/config/database.sql:/docker-entrypoint-initdb.d/init.sql
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      - emsal_postgres_data_v2:/var/lib/postgresql/data
 
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
-    container_name: emsal_atlasi_es
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: legalzeka_backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - yargi-mcp
+    env_file:
+      - .env
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - PORT=3001
+      - DATABASE_URL=postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi
+      - YARGI_MCP_URL=http://yargi-mcp:8000
     ports:
-      - "9200:9200"
-    volumes:
-      - emsal_es_data:/usr/share/elasticsearch/data
+      - "3001:3001"
+
+  yargi-mcp:
+    image: ghcr.io/devlawyer1/yargi-mcp:v0.2.0-lz.1
+    container_name: yargi_mcp_server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - ALLOWED_ORIGINS=*
+
+  client:
+    build:
+      context: ./client
+    container_name: legalzeka_client
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3001/api
+    ports:
+      - "3002:3002"
 
 volumes:
-  emsal_mysql_data:
-  emsal_es_data:
+
+  emsal_postgres_data_v2:

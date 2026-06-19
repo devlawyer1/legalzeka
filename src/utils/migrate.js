@@ -1,5 +1,5 @@
 // ============================================================
-// Emsal Atlası - Database Migration
+// Emsal Atlası - Database Migration (PostgreSQL)
 // Veritabanı tablolarını oluşturur ve seed data ekler
 // ============================================================
 
@@ -7,21 +7,10 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const mysql = require('mysql2/promise');
+const { pool } = require('../config/db');
 
 async function migrate() {
-  let connection;
-
   try {
-    // Önce veritabanı olmadan bağlan
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT, 10) || 3306,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      multipleStatements: true,
-    });
-
     console.log('🔄 Migration başlatılıyor...\n');
 
     // SQL dosyasını oku
@@ -29,18 +18,16 @@ async function migrate() {
     const sql = fs.readFileSync(sqlFilePath, 'utf8');
 
     // SQL komutlarını çalıştır
-    await connection.query(sql);
+    await pool.query(sql);
 
     console.log('✅ Veritabanı tabloları başarıyla oluşturuldu.');
     console.log('✅ Varsayılan roller ve abonelik planları eklendi.');
     console.log('\n🎉 Migration tamamlandı!');
   } catch (error) {
-    console.error('❌ Migration hatası:', error.message);
+    console.error('❌ Migration hatası:', error);
     process.exit(1);
   } finally {
-    if (connection) {
-      await connection.end();
-    }
+    await pool.end();
   }
 }
 

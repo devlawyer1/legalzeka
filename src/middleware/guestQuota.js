@@ -44,7 +44,7 @@ async function guestQuota(req, res, next) {
     // Eğer son aramadan bu yana 24 saat geçmişse, kotayı sıfırla
     if (hoursSinceLastSearch > 24) {
       await pool.query(
-        'UPDATE GuestSearches SET search_count = 1, last_search_at = CURRENT_TIMESTAMP WHERE ip_address = $1',
+        'UPDATE guest_searches SET search_count = 1, last_search_at = CURRENT_TIMESTAMP WHERE ip_address = $1',
         [ipAddress]
       );
       req.subscription = {
@@ -66,7 +66,7 @@ async function guestQuota(req, res, next) {
 
     // Kota dolmamışsa artır
     await pool.query(
-      'UPDATE GuestSearches SET search_count = search_count + 1, last_search_at = CURRENT_TIMESTAMP WHERE ip_address = $1',
+      'UPDATE guest_searches SET search_count = search_count + 1, last_search_at = CURRENT_TIMESTAMP WHERE ip_address = $1',
       [ipAddress]
     );
 

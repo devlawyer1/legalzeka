@@ -10,11 +10,18 @@ import { useState } from "react";
 export default function SearchBar({ onSearch, subscription }) {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    mahkeme: "",
+    hukuk_dali: "",
+    yilMin: "",
+    yilMax: ""
+  });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (query.trim()) {
-      onSearch(query.trim(), "semantic");
+      onSearch(query.trim(), "semantic", filters);
     }
   };
 
@@ -42,7 +49,7 @@ export default function SearchBar({ onSearch, subscription }) {
             height="22"
             viewBox="0 0 22 22"
             fill="none"
-            stroke={focused ? "#2563EB" : "#A3A3A3"}
+            stroke={focused ? "var(--color-accent)" : "var(--color-text-tertiary)"}
             strokeWidth="2"
             strokeLinecap="round"
             style={{ flexShrink: 0, transition: "stroke var(--transition-fast)" }}
@@ -69,6 +76,75 @@ export default function SearchBar({ onSearch, subscription }) {
             </svg>
           </button>
         </div>
+
+        {/* Filter Toggle Button */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+          <button 
+            type="button" 
+            onClick={() => setShowFilters(!showFilters)}
+            style={styles.filterToggleBtn}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            Filtreler {showFilters ? 'Gizle' : 'Göster'}
+          </button>
+        </div>
+
+        {/* Filters Panel */}
+        {showFilters && (
+          <div style={styles.filtersPanel} className="animate-fade-in">
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>Mahkeme</label>
+              <select 
+                style={styles.filterSelect}
+                value={filters.mahkeme}
+                onChange={(e) => setFilters({...filters, mahkeme: e.target.value})}
+              >
+                <option value="">Tümü</option>
+                <option value="Yargıtay">Yargıtay</option>
+                <option value="Danıştay">Danıştay</option>
+                <option value="BAM">BAM (İstinaf)</option>
+              </select>
+            </div>
+            
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>Hukuk Dalı</label>
+              <select 
+                style={styles.filterSelect}
+                value={filters.hukuk_dali}
+                onChange={(e) => setFilters({...filters, hukuk_dali: e.target.value})}
+              >
+                <option value="">Tümü</option>
+                <option value="Ceza Hukuku">Ceza Hukuku</option>
+                <option value="İş Hukuku">İş Hukuku</option>
+                <option value="Medeni Hukuk">Medeni Hukuk</option>
+                <option value="İdare Hukuku">İdare Hukuku</option>
+              </select>
+            </div>
+
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>Yıl Aralığı</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input 
+                  type="number" 
+                  placeholder="Min" 
+                  style={styles.filterInput}
+                  value={filters.yilMin}
+                  onChange={(e) => setFilters({...filters, yilMin: e.target.value})}
+                />
+                <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
+                <input 
+                  type="number" 
+                  placeholder="Max" 
+                  style={styles.filterInput}
+                  value={filters.yilMax}
+                  onChange={(e) => setFilters({...filters, yilMax: e.target.value})}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Keyboard shortcut hint */}
         <div style={styles.hints}>
@@ -229,4 +305,54 @@ const styles = {
     transition: "all var(--transition-fast)",
     whiteSpace: "nowrap",
   },
+  filterToggleBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--color-text-tertiary)',
+    fontSize: 12,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    cursor: 'pointer',
+    padding: '4px 8px',
+    borderRadius: '4px',
+  },
+  filtersPanel: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 16,
+    padding: '16px',
+    background: 'var(--color-bg-subtle)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--color-border)',
+    marginTop: '8px',
+  },
+  filterGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    flex: '1 1 150px',
+  },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: 'var(--color-text-secondary)',
+  },
+  filterSelect: {
+    padding: '8px 12px',
+    borderRadius: '4px',
+    border: '1px solid var(--color-border)',
+    background: 'var(--color-bg-elevated)',
+    color: 'var(--color-text-primary)',
+    fontSize: 13,
+  },
+  filterInput: {
+    padding: '8px 12px',
+    borderRadius: '4px',
+    border: '1px solid var(--color-border)',
+    background: 'var(--color-bg-elevated)',
+    color: 'var(--color-text-primary)',
+    fontSize: 13,
+    width: '100%',
+  }
 };

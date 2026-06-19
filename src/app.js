@@ -8,6 +8,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 require('dotenv').config();
 
 const routes = require('./routes');
@@ -44,7 +45,7 @@ const authLimiter = rateLimit({
 // Genel rate limiter
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 10000,
   message: {
     success: false,
     message: 'Çok fazla istek gönderildi. Lütfen daha sonra tekrar deneyin.',
@@ -65,6 +66,9 @@ app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
+
+// Yüklenen dosyalar için statik servis (dava belgeleri)
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // =============================================================
 // Route'lar

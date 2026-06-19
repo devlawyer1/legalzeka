@@ -1,0 +1,7 @@
+node_modules
+client
+scratch
+.git
+*.log
+ask_output.json
+page.patch

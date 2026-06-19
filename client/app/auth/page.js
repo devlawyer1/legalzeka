@@ -86,21 +86,20 @@ export default function AuthPage() {
           </div>
 
           <h1 style={styles.heroTitle}>
-            Emsal kararları
+            Hukuki Süreçlerinizde
             <br />
-            <span style={styles.heroAccent}>anında bulun.</span>
+            <span style={styles.heroAccent}>Yapay Zeka Gücü.</span>
           </h1>
           <p style={styles.heroDesc}>
-            Türkiye'nin en gelişmiş emsal karar arama platformu.
-            Anahtar kelime ve semantik arama ile ihtiyacınız olan karara saniyeler içinde ulaşın.
+            Legal Zeka ile dilekçelerinizi oluşturun, sözleşmelerinizi analiz edin ve emsal kararlara saniyeler içinde ulaşın.
           </p>
 
           {/* Feature bullets */}
           <div style={styles.features}>
             {[
-              "Yargıtay ve Danıştay kararları",
-              "Semantik arama ile doğal dil desteği",
-              "Güvenli ve hızlı erişim",
+              "Yapay Zeka ile Dilekçe & Sözleşme İnceleme",
+              "Semantik Emsal Arama ve Time-Travel Mevzuat",
+              "Büro Yönetimi ve UYAP Entegrasyonu",
             ].map((f, i) => (
               <div key={i} style={styles.featureItem}>
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -273,18 +272,19 @@ const styles = {
   page: {
     display: "flex",
     minHeight: "100vh",
-    background: "var(--color-bg)",
+    backgroundImage: "linear-gradient(145deg, rgba(22, 22, 22, 0.8) 0%, rgba(22, 22, 22, 0.95) 100%), url('/auth-bg.jpg')",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
   },
 
   /* Left branding panel */
   leftPanel: {
     flex: "0 0 48%",
-    background: "linear-gradient(145deg, var(--color-bg-subtle) 0%, var(--color-bg) 100%)",
+    background: "transparent",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: "60px",
-    borderRight: "1px solid var(--color-border)",
     position: "relative",
     overflow: "hidden",
   },

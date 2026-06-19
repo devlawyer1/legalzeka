@@ -37,10 +37,36 @@ async function checkSubscription(req, res, next) {
       });
     }
 
-    // 2. Kullanıcının aktif ve süresi dolmamış aboneliğini sorgula
+    // 2. Admin kullanıcıları için sınırsız erişim (bypass)
+    if (req.user.role === 'Admin') {
+      req.subscription = {
+        id: -1,
+        planId: -1,
+        planName: 'Admin Sınırsız',
+        maxSearchLimit: -1, // Sınırsız limit
+        maxSeats: -1,
+        entitlements: {
+          maxSeats: -1,
+          maxCases: -1,
+          maxDocumentAnalyses: -1,
+          maxWorkflows: -1,
+          clientPortal: true,
+          auditLogs: true,
+          privateKnowledgeBase: true,
+        },
+        startDate: new Date(),
+        endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 100)),
+      };
+      return next();
+    }
+
+    // 3. Kullanıcının aktif ve süresi dolmamış aboneliğini sorgula
     const { rows: subscriptions } = await pool.query(
       `SELECT us.id, us.plan_id, us.start_date, us.end_date, us.is_active,
-              sp.plan_name, sp.max_search_limit, sp.price
+              sp.plan_name, sp.max_search_limit, sp.max_seats, sp.price,
+              sp.max_cases, sp.max_document_analyses, sp.max_workflows,
+              sp.client_portal_enabled, sp.audit_logs_enabled,
+              sp.private_knowledge_base_enabled, sp.feature_entitlements
        FROM user_subscriptions us
        JOIN subscription_plans sp ON us.plan_id = sp.id
        WHERE us.user_id = $1
@@ -70,6 +96,16 @@ async function checkSubscription(req, res, next) {
       planId: sub.plan_id,
       planName: sub.plan_name,
       maxSearchLimit: sub.max_search_limit,
+      maxSeats: sub.max_seats,
+      entitlements: sub.feature_entitlements || {
+        maxSeats: sub.max_seats,
+        maxCases: sub.max_cases,
+        maxDocumentAnalyses: sub.max_document_analyses,
+        maxWorkflows: sub.max_workflows,
+        clientPortal: sub.client_portal_enabled,
+        auditLogs: sub.audit_logs_enabled,
+        privateKnowledgeBase: sub.private_knowledge_base_enabled,
+      },
       startDate: sub.start_date,
       endDate: sub.end_date,
     };

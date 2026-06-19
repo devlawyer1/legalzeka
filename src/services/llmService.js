@@ -16,6 +16,7 @@
  */
 
 const { invokeBedrockClaude } = require('./bedrockService');
+const { invokeGemini } = require('./geminiService');
 
 const SYSTEM_PROMPT = `Sen "Legal Zeka" adlı Türk hukuk platformunun yapay zeka asistanısın. Adın "Legal Zeka".
 
@@ -49,48 +50,6 @@ const SYSTEM_PROMPT = `Sen "Legal Zeka" adlı Türk hukuk platformunun yapay zek
 - İlgili kanun maddelerini ve emsal kararları belge içinde referans göster.
 - Profesyonel ve resmi bir dil kullan.`;
 
-/**
- * Gemini API ile chat completion
- */
-async function callGemini(messages) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY tanımlanmamış. Lütfen .env dosyasına ekleyin.');
-
-  // Gemini API formatına çevir
-  const contents = messages
-    .filter(m => m.role !== 'system')
-    .map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }));
-
-  const systemInstruction = messages.find(m => m.role === 'system');
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction.content }] } : undefined,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 4096,
-          topP: 0.9,
-        }
-      })
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Gemini API hatası: ${response.status} — ${err}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Yanıt üretilemedi.';
-}
 
 /**
  * OpenAI API ile chat completion
@@ -226,12 +185,12 @@ async function callOllamaStream(messages, res) {
  * @param {string} userMessage - Kullanıcının son mesajı
  * @returns {string} - AI yanıtı
  */
-async function chat(conversationHistory, userMessage) {
+async function chat(conversationHistory, userMessage, customSystemPrompt = null) {
   const provider = (process.env.LLM_PROVIDER || 'ollama').toLowerCase();
 
   // Mesaj zincirini oluştur
   const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: customSystemPrompt || SYSTEM_PROMPT },
     ...conversationHistory,
     { role: 'user', content: userMessage }
   ];
@@ -242,9 +201,13 @@ async function chat(conversationHistory, userMessage) {
     case 'claude':
       return callClaude(messages);
     case 'gemini':
-      return callGemini(messages);
+      return invokeGemini(userMessage, {
+        systemPrompt: customSystemPrompt || SYSTEM_PROMPT,
+        conversationHistory: conversationHistory,
+      });
     case 'bedrock':
       return invokeBedrockClaude(userMessage, {
+        systemPrompt: customSystemPrompt || SYSTEM_PROMPT,
         conversationHistory: [
           ...conversationHistory,
         ],
@@ -255,4 +218,85 @@ async function chat(conversationHistory, userMessage) {
   }
 }
 
-module.exports = { chat, callOllamaStream, SYSTEM_PROMPT };
+/**
+ * Yapay Zeka ile Dilekçe Üretir
+ */
+async function generatePetition(caseDetails, petitionType, parties, evidence, additionalNotes) {
+  const provider = (process.env.LLM_PROVIDER || 'ollama').toLowerCase();
+
+  const prompt = `Sen uzman bir Türk Hukuku avukatısın. Aşağıdaki bilgilere dayanarak profesyonel, Yargıtay formatına uygun, hukuki dayanakları içeren bir "${petitionType}" taslağı hazırla.
+  
+LÜTFEN ŞU KURALLARA UY:
+1. Sadece dilekçe metnini ver, "İşte dilekçeniz" gibi giriş/çıkış cümleleri kullanma.
+2. Markdown formatını kullan.
+3. HMK/CMK veya ilgili maddi hukuk kurallarına ve emsal kararlara atıf yap.
+
+DAVA BİLGİLERİ:
+${caseDetails}
+
+TARAFLAR:
+${parties}
+
+DELİLLER:
+${evidence}
+
+EK NOTLAR / TALEPLER:
+${additionalNotes}
+`;
+
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: prompt }
+  ];
+
+  switch (provider) {
+    case 'openai': return callOpenAI(messages);
+    case 'claude': return callClaude(messages);
+    case 'gemini': return invokeGemini(prompt, { systemPrompt: SYSTEM_PROMPT, conversationHistory: [] });
+    case 'bedrock': return invokeBedrockClaude(prompt, { systemPrompt: SYSTEM_PROMPT, conversationHistory: [] });
+    case 'ollama':
+    default: return callOllama(messages);
+  }
+}
+
+/**
+ * Yapay Zeka ile İki Dilekçeyi Karşılaştırır
+ */
+async function comparePetitions(petition1Title, petition1Content, petition2Title, petition2Content) {
+  const provider = (process.env.LLM_PROVIDER || 'ollama').toLowerCase();
+
+  const prompt = `Sen usta bir Türk Hukuku uzmanısın. Aşağıda bir davaya ait iki farklı dilekçe metni verilmiştir. 
+Bu iki dilekçeyi tarafsız bir gözle incele ve maddeler halinde şu analizi yap:
+
+1. Çelişen Beyanlar: İki dilekçe arasında maddi vakıalar açısından nerelerde çelişki var?
+2. Hukuki Zayıflıklar / Eksik İtirazlar: İkinci dilekçe, birinci dilekçedeki hangi önemli iddiaları cevapsız bırakmış veya zayıf savunmuş?
+3. Güçlü Argümanlar: Her iki tarafın hukuki açıdan en güçlü argümanları nelerdir?
+4. Sonuç ve Strateji Önerisi: Bu tabloya göre davayı yürütecek avukata stratejik tavsiyelerin nelerdir?
+
+LÜTFEN ŞU KURALLARA UY:
+- Analizini profesyonel bir dille ve Markdown formatında hazırla.
+- Sadece analizi ver, gereksiz sohbet cümleleri kurma.
+
+--- BİRİNCİ DİLEKÇE (${petition1Title}) ---
+${petition1Content}
+
+--- İKİNCİ DİLEKÇE (${petition2Title}) ---
+${petition2Content}
+`;
+
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: prompt }
+  ];
+
+  switch (provider) {
+    case 'openai': return callOpenAI(messages);
+    case 'claude': return callClaude(messages);
+    case 'gemini': return invokeGemini(prompt, { systemPrompt: SYSTEM_PROMPT, conversationHistory: [] });
+    case 'bedrock': return invokeBedrockClaude(prompt, { systemPrompt: SYSTEM_PROMPT, conversationHistory: [] });
+    case 'ollama':
+    default: return callOllama(messages);
+  }
+}
+
+module.exports = { chat, callOllamaStream, SYSTEM_PROMPT, generatePetition, comparePetitions };

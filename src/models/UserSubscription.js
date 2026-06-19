@@ -35,7 +35,10 @@ class UserSubscription {
    */
   static async findActiveByUserId(userId) {
     const { rows } = await pool.query(
-      `SELECT us.*, sp.plan_name, sp.max_search_limit, sp.price
+      `SELECT us.*, sp.plan_name, sp.max_search_limit, sp.max_seats, sp.price,
+              sp.max_cases, sp.max_document_analyses, sp.max_workflows,
+              sp.client_portal_enabled, sp.audit_logs_enabled,
+              sp.private_knowledge_base_enabled, sp.feature_entitlements
        FROM user_subscriptions us
        JOIN subscription_plans sp ON us.plan_id = sp.id
        WHERE us.user_id = $1 AND us.is_active = true AND us.end_date >= CURRENT_DATE
@@ -53,7 +56,10 @@ class UserSubscription {
    */
   static async findAllByUserId(userId) {
     const { rows } = await pool.query(
-      `SELECT us.*, sp.plan_name, sp.max_search_limit, sp.price
+      `SELECT us.*, sp.plan_name, sp.max_search_limit, sp.max_seats, sp.price,
+              sp.max_cases, sp.max_document_analyses, sp.max_workflows,
+              sp.client_portal_enabled, sp.audit_logs_enabled,
+              sp.private_knowledge_base_enabled, sp.feature_entitlements
        FROM user_subscriptions us
        JOIN subscription_plans sp ON us.plan_id = sp.id
        WHERE us.user_id = $1

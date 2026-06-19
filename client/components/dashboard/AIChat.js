@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { Scale, ClipboardList, Home, Hourglass } from "lucide-react";
 import { createConversation, getConversations, getConversationMessages, deleteConversation } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
@@ -114,10 +115,10 @@ const actionBtnStyle = {
 // ─── Welcome screen ──────────────────────────────────────────
 function Welcome({ onSend }) {
   const tips = [
-    { t: "İş kazası sonucu tazminat hesaplama kriterleri nedir?", i: "⚖️" },
-    { t: "Kıdem tazminatı tavanı aşılabilir mi?", i: "📋" },
-    { t: "Boşanma davasında mal paylaşımı nasıl yapılır?", i: "🏠" },
-    { t: "İcra takibinde zamanaşımı süreleri nelerdir?", i: "⏳" },
+    { t: "İş kazası sonucu tazminat hesaplama kriterleri nedir?", i: <Scale size={18} /> },
+    { t: "Kıdem tazminatı tavanı aşılabilir mi?", i: <ClipboardList size={18} /> },
+    { t: "Boşanma davasında mal paylaşımı nasıl yapılır?", i: <Home size={18} /> },
+    { t: "İcra takibinde zamanaşımı süreleri nelerdir?", i: <Hourglass size={18} /> },
   ];
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", gap: 16, textAlign: "center" }}>

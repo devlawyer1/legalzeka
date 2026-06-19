@@ -1,0 +1,7 @@
+version: "3.8"
+
+services:
+  yargi-mcp:
+    build:
+      context: ./services/yargi-mcp
+    image: ghcr.io/devlawyer1/yargi-mcp:local-dev

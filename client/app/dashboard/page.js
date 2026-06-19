@@ -3,15 +3,38 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/dashboard/Sidebar";
+import Workdesk from "@/components/dashboard/Workdesk";
 import SearchBar from "@/components/dashboard/SearchBar";
 import ExecutionCalculator from "@/components/dashboard/ExecutionCalculator";
 import FeeCalculator from "@/components/dashboard/FeeCalculator";
 import TermCalculator from "@/components/dashboard/TermCalculator";
 import LaborCalculator from "@/components/dashboard/LaborCalculator";
+import CivilExecutionCalculator from "@/components/dashboard/CivilExecutionCalculator";
+import CompensationCalculator from "@/components/dashboard/CompensationCalculator";
+import FamilyLawCalculator from "@/components/dashboard/FamilyLawCalculator";
+import FinancialCalculator from "@/components/dashboard/FinancialCalculator";
+import InheritanceCalculator from "@/components/dashboard/InheritanceCalculator";
 import AIChat from "@/components/dashboard/AIChat";
 import DevilsAdvocate from "@/components/dashboard/DevilsAdvocate";
 import ContractReview from "@/components/dashboard/ContractReview";
-import { getStoredUser, isAuthenticated, logout, searchKeyword, searchSemantic, askAI, getMySubscription, getHistory, clearHistory, deleteHistory, updateProfile, updatePassword, updateStoredUser, getNotes, addNote, deleteNote, updateNote } from "@/lib/api";
+import ExpertAgents from "@/components/dashboard/ExpertAgents";
+import CollectionsManagement from "@/components/dashboard/CollectionsManagement";
+import CRMBoard from "@/components/crm/CRMBoard";
+import FinanceDashboard from "@/components/finance/FinanceDashboard";
+import CorporateNetwork from "@/components/corporate/CorporateNetwork";
+import FirmManagement from "@/components/dashboard/FirmManagement";
+import FirmTemplates from "@/components/dashboard/FirmTemplates";
+import CaseManagement from "@/components/dashboard/CaseManagement";
+import TaskBoard from "@/components/dashboard/TaskBoard";
+import InternalChat from "@/components/dashboard/InternalChat";
+import PetitionManagement from "@/components/dashboard/PetitionManagement";
+import Simulation from "@/components/dashboard/Simulation";
+import TevkilBoard from "@/components/dashboard/TevkilBoard";
+
+import UyapIntegration from "@/components/dashboard/UyapIntegration";
+import DeadlineTracker from "@/components/dashboard/DeadlineTracker";
+import LawTimeline from "@/components/dashboard/LawTimeline";
+import { getStoredUser, isAuthenticated, logout, searchKeyword, searchSemantic, askAI, getMySubscription, getHistory, clearHistory, deleteHistory, updateProfile, updatePassword, updateStoredUser, getNotes, addNote, deleteNote, updateNote, getMyFirms } from "@/lib/api";
 
 /* ============================================================
    Emsal Atlası - Dashboard Page
@@ -22,11 +45,13 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState(null);
-  const [activePage, setActivePage] = useState("ai_chat");
+  const [activeFirm, setActiveFirm] = useState(null);
+  const [activePage, setActivePage] = useState("workdesk");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [lastSearch, setLastSearch] = useState(null);
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [pageReady, setPageReady] = useState(false);
   
@@ -34,6 +59,7 @@ export default function DashboardPage() {
   const [aiResponse, setAiResponse] = useState("");
   const [aiStreaming, setAiStreaming] = useState(false);
   const [aiSources, setAiSources] = useState([]);
+  const [aiVerification, setAiVerification] = useState(null);
 
   // History State
   const [searchHistory, setSearchHistory] = useState([]);
@@ -51,38 +77,62 @@ export default function DashboardPage() {
   const [settingsMessage, setSettingsMessage] = useState({ type: "", text: "" });
 
   useEffect(() => {
-    const storedUser = getStoredUser();
-    setUser(storedUser);
-    
-    if (storedUser) {
-      setProfileForm({ firstName: storedUser.firstName, lastName: storedUser.lastName });
-      
-      // Abonelik bilgisini çek
-      getMySubscription()
-        .then((res) => setSubscription(res.data))
-        .catch(() => {})
-        .finally(() => setPageReady(true));
-    } else {
-      setSubscription({ planName: "Misafir Kullanıcı", maxSearchLimit: 3 });
-      setPageReady(true);
+    let cancelled = false;
+
+    async function hydrateUserContext() {
+      await Promise.resolve();
+      if (cancelled) return;
+
+      const storedUser = getStoredUser();
+      setUser(storedUser);
+
+      if (storedUser) {
+        setProfileForm({ firstName: storedUser.firstName, lastName: storedUser.lastName });
+
+        getMySubscription()
+          .then((res) => setSubscription(res.data))
+          .catch(() => {})
+          .finally(() => {
+            if (!cancelled) setPageReady(true);
+          });
+
+        getMyFirms()
+          .then((res) => {
+            if (cancelled) return;
+            if (res.data && res.data.length > 0) {
+              setActiveFirm(res.data[0]);
+            } else {
+              setActiveFirm(null);
+            }
+          })
+          .catch(() => {});
+      } else {
+        setSubscription({ planName: "Misafir Kullanıcı", maxSearchLimit: 3 });
+        setPageReady(true);
+      }
     }
+
+    hydrateUserContext();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  const handleSearch = async (query, type) => {
+  const handleSearch = async (query, type, filters = {}) => {
     setSearching(true);
     setSearchError("");
     setSearchResults(null);
     setAiResponse("");
     setAiSources([]);
+    setAiVerification(null);
+    setLastSearch({ query, filters });
 
     try {
       let res;
       if (type === "semantic") {
-        res = await searchSemantic(query);
-        // Semantic aramada RAG Asistanı da tetikle
-        triggerAI(query);
+        res = await searchSemantic(query, filters);
       } else {
-        res = await searchKeyword(query);
+        res = await searchKeyword(query, 1, 20, filters);
       }
       setSearchResults(res.data);
     } catch (err) {
@@ -98,12 +148,16 @@ export default function DashboardPage() {
     }
   };
 
-  const triggerAI = async (query) => {
+  const triggerAI = async (query, filters = {}) => {
     setAiStreaming(true);
+    setAiResponse("");
+    setAiSources([]);
+    setAiVerification(null);
     try {
-      const response = await askAI(query);
+      const response = await askAI(query, filters);
       const fullText = response.data.answer;
-      setAiSources(response.data.sources);
+      setAiSources(response.data.sources || []);
+      setAiVerification(response.data.verification || null);
       
       // Simülasyon: Kelime kelime yazma efekti (Streaming)
       let currentText = "";
@@ -243,30 +297,20 @@ export default function DashboardPage() {
       />
 
       <main style={styles.main}>
-        {/* Top bar */}
-        <header style={styles.topBar}>
-          <div style={styles.topBarLeft}>
-            <h2 style={styles.pageTitle}>
-              {activePage === "ai_chat" && "AI Asistan"}
-              {activePage === "search" && "Emsal Arama"}
-              {activePage === "recent" && "Son Aramalar"}
-              {activePage === "saved" && "Kaydedilenler"}
-              {activePage === "notes" && "Notlarım"}
-              {activePage === "devils_advocate" && "Şeytanın Avukatı"}
-              {activePage === "contract_review" && "Sözleşme İnceleme"}
-              {activePage === "calculator" && "İnfaz Hesaplama"}
-              {activePage === "fee_calculator" && "Harç & Vekalet Hesaplama"}
-              {activePage === "term_calculator" && "Süre Hesaplama"}
-              {activePage === "labor_calculator" && "Kıdem & İhbar Hesaplama"}
-              {activePage === "subscription" && "Abonelik"}
-              {activePage === "settings" && "Ayarlar"}
-            </h2>
-          </div>
-          <div style={styles.topBarRight} />
-        </header>
+        {/* Top bar removed to save screen space */}
 
         {/* Content Area */}
         <div style={{ ...styles.content, padding: (activePage === "notes" || activePage === "ai_chat") ? 0 : "40px 28px" }}>
+          {activePage === "workdesk" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <Workdesk
+                activeFirm={activeFirm}
+                user={user}
+                onNavigate={handleNavigate}
+              />
+            </div>
+          )}
+
           {activePage === "ai_chat" && (
             <div style={{ height: "100%", width: "100%" }}>
               <AIChat />
@@ -323,9 +367,30 @@ export default function DashboardPage() {
                   {aiSources.length > 0 && !aiStreaming && (
                     <div style={styles.aiSources}>
                       <span style={styles.aiSourceLabel}>Kaynaklar:</span>
-                      {aiSources.map(s => (
-                        <span key={s.karar_no} style={styles.aiSourceTag}>{s.karar_no}</span>
-                      ))}
+                      {aiSources.map((s, index) => {
+                        const status = s.verificationStatus === "verified" ? "Doğrulandı" : "Kontrol";
+                        return (
+                          <span key={`${s.document_id || s.karar_no || s.esas_no || index}-${index}`} style={styles.aiSourceTag}>
+                            {`K${index + 1}`} · {s.origin || s.source_label || s.type || "Kaynak"} · {status}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {aiVerification && !aiStreaming && (
+                    <div style={styles.trustPanel}>
+                      <div style={styles.trustMetric}>
+                        <span style={styles.trustLabel}>Güven</span>
+                        <strong>%{Math.round((aiVerification.confidence || 0) * 100)}</strong>
+                      </div>
+                      <div style={styles.trustMetric}>
+                        <span style={styles.trustLabel}>Doğrulanmış kaynak</span>
+                        <strong>{aiVerification.verifiedSourceCount}/{aiSources.length}</strong>
+                      </div>
+                      <div style={styles.trustMetric}>
+                        <span style={styles.trustLabel}>Kontrol gerektiren</span>
+                        <strong>{aiVerification.needsReviewCount}</strong>
+                      </div>
                     </div>
                   )}
                   {!aiStreaming && aiResponse && (
@@ -357,6 +422,16 @@ export default function DashboardPage() {
                     <span style={styles.resultCount}>
                       <strong>&quot;{searchResults.query}&quot;</strong> için {searchResults.totalResults} sonuç
                     </span>
+                    {searchResults.totalResults > 0 && lastSearch && (
+                      <button
+                        type="button"
+                        onClick={() => triggerAI(lastSearch.query, lastSearch.filters)}
+                        disabled={aiStreaming}
+                        style={{ ...styles.logoutBtn, fontSize: 12, padding: "7px 12px", background: "var(--color-bg-elevated)", color: "var(--color-text-primary)" }}
+                      >
+                        {aiStreaming ? "Yanıt hazırlanıyor..." : "Kaynaklı AI Yanıtı Üret"}
+                      </button>
+                    )}
                   </div>
 
                   {searchResults.totalResults === 0 ? (
@@ -368,42 +443,64 @@ export default function DashboardPage() {
                       </svg>
                       <p style={styles.emptyTitle}>Sonuç bulunamadı</p>
                       <p style={styles.emptyDesc}>
-                        Farklı anahtar kelimeler deneyin veya semantik arama moduna geçin.
+                        Güvenilir ve doğrulanmış sonuç bulunamadı. Daha dar bir hukuki kavram, mahkeme türü veya tarih aralığı deneyin.
                       </p>
                     </div>
                   ) : (
                     <div style={styles.resultList}>
-                      {searchResults.results.map((result) => (
-                        <div key={result.id} style={styles.resultCard} className="animate-slide-in">
-                          <div style={styles.resultCardHeader}>
-                            <div style={styles.resultTags}>
-                              <span style={styles.tagMahkeme}>{result.mahkeme}</span>
-                              <span style={styles.tagYil}>{result.karar_yili}</span>
-                              <span style={styles.tagNo}>{result.karar_no}</span>
+                      {searchResults.results.map((result, index) => {
+                        const stableKey = result.id || result.document_id || `${result.source || "source"}-${result.karar_no || result.esas_no || index}`;
+                        const highlights = result.highlights || {};
+                        const keywords = Array.isArray(result.anahtar_kelimeler) ? result.anahtar_kelimeler : [];
+                        const snippet = result.snippet || result.ozet || result.metin || "Bu sonuç için gösterilebilir özet bulunamadı.";
+                        const confidence = typeof result.confidence === "number" ? Math.round(result.confidence * 100) : null;
+                        const cacheLabel = result.cache_status === "cached_mcp"
+                          ? "Cache"
+                          : result.source === "local"
+                            ? "Yerel"
+                            : "Canlı";
+                        const verificationLabel = result.fetch_status === "fetched" || result.fetch_status === "verified" || result.fetch_status === "indexed"
+                          ? "Doğrulandı"
+                          : "Kontrol";
+
+                        return (
+                          <div key={stableKey} style={styles.resultCard} className="animate-slide-in">
+                            <div style={styles.resultCardHeader}>
+                              <div style={styles.resultTags}>
+                                <span style={styles.tagMahkeme}>{result.mahkeme || result.court || "Mahkeme belirtilmemiş"}</span>
+                                {(result.karar_yili || result.date) && <span style={styles.tagYil}>{result.karar_yili || result.date}</span>}
+                                {result.karar_no && <span style={styles.tagNo}>{result.karar_no}</span>}
+                                {result.source_label && <span style={styles.keywordTag}>{result.source_label}</span>}
+                                <span style={cacheLabel === "Canlı" ? styles.liveTag : styles.cacheTag}>{cacheLabel}</span>
+                                <span style={verificationLabel === "Doğrulandı" ? styles.verifiedTag : styles.reviewTag}>{verificationLabel}</span>
+                              </div>
+                              <span style={styles.resultScore}>
+                                {confidence !== null ? `Güven: %${confidence}` : `Skor: ${Number(result.score || 0).toFixed(2)}`}
+                              </span>
                             </div>
-                            <span style={styles.resultScore}>Skor: {result.score.toFixed(2)}</span>
-                          </div>
-                          
-                          <h4 style={styles.resultTitle}>{result.konu}</h4>
-                          
-                          {/* Highlights veya Orijinal Metin */}
-                          <div style={styles.resultSnippet}>
-                            {result.highlights.ozet ? (
-                              <p dangerouslySetInnerHTML={{ __html: result.highlights.ozet.join(' ... ') }} />
-                            ) : result.highlights.metin ? (
-                              <p dangerouslySetInnerHTML={{ __html: result.highlights.metin.join(' ... ') }} />
-                            ) : (
-                              <p>{result.ozet}</p>
+
+                            <h4 style={styles.resultTitle}>{result.konu || result.court || "Başlık belirtilmemiş"}</h4>
+
+                            <div style={styles.resultSnippet}>
+                              {Array.isArray(highlights.ozet) && highlights.ozet.length > 0 ? (
+                                <p dangerouslySetInnerHTML={{ __html: highlights.ozet.join(' ... ') }} />
+                              ) : Array.isArray(highlights.metin) && highlights.metin.length > 0 ? (
+                                <p dangerouslySetInnerHTML={{ __html: highlights.metin.join(' ... ') }} />
+                              ) : (
+                                <p>{snippet}</p>
+                              )}
+                            </div>
+
+                            {(keywords.length > 0 || result.matched_terms?.length > 0) && (
+                              <div style={styles.resultKeywords}>
+                                {(keywords.length > 0 ? keywords : result.matched_terms).map(kw => (
+                                  <span key={kw} style={styles.keywordTag}>#{kw}</span>
+                                ))}
+                              </div>
                             )}
                           </div>
-                          
-                          <div style={styles.resultKeywords}>
-                            {result.anahtar_kelimeler.map(kw => (
-                              <span key={kw} style={styles.keywordTag}>#{kw}</span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -493,15 +590,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {activePage === "saved" && (
-            <div style={styles.placeholderPage} className="animate-fade-in">
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#D4D4D4" strokeWidth="1.5">
-                <path d="M12 8h24a2 2 0 012 2v30l-14-7-14 7V10a2 2 0 012-2z" />
-              </svg>
-              <h3 style={styles.placeholderTitle}>Kaydedilenler</h3>
-              <p style={styles.placeholderDesc}>Kaydettiğiniz emsal kararlar burada listelenir.</p>
-            </div>
-          )}
+
 
           {activePage === "notes" && (
             <div style={{flexDirection: "row", gap: 0, padding: 0, margin: 0, height: "100%", width: "100%", overflow: "hidden", display: "flex"}} className="animate-fade-in">
@@ -653,15 +742,59 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {activePage === "calculator" && (
+          {activePage === "expert_agents" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <ExpertAgents
+                activeFirmId={activeFirm?.id}
+                onSaveNote={(text) => {
+                  const newNote = addNote(text, "ai");
+                  setNotes(getNotes());
+                  setActiveNoteId(newNote.id);
+                  alert("Uzman ajan çıktısı notlarınıza eklendi!");
+                }}
+              />
+            </div>
+          )}
+
+          {activePage === "tevkil" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <TevkilBoard />
+            </div>
+          )}
+
+          {activePage === "petitions" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <PetitionManagement />
+            </div>
+          )}
+
+          {activePage === "simulation" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', padding: '24px', height: '100%', overflow: 'hidden' }}>
+              <Simulation />
+            </div>
+          )}
+
+          {activePage === "criminal_execution" && (
             <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
               <ExecutionCalculator />
+            </div>
+          )}
+
+          {activePage === "civil_execution" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <CivilExecutionCalculator />
             </div>
           )}
 
           {activePage === "fee_calculator" && (
             <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
               <FeeCalculator />
+            </div>
+          )}
+
+          {activePage === "financial_calculator" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <FinancialCalculator />
             </div>
           )}
 
@@ -674,6 +807,104 @@ export default function DashboardPage() {
           {activePage === "labor_calculator" && (
             <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
               <LaborCalculator />
+            </div>
+          )}
+
+          {activePage === "compensation" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <CompensationCalculator />
+            </div>
+          )}
+
+          {activePage === "family_law" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <FamilyLawCalculator />
+            </div>
+          )}
+
+          {activePage === "inheritance_law" && (
+            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
+              <InheritanceCalculator />
+            </div>
+          )}
+
+          {activePage === "crm" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', padding: '24px', height: '100%', overflow: 'hidden' }}>
+              <CRMBoard activeFirmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "finance" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'hidden' }}>
+              <FinanceDashboard activeFirmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "corporate" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'hidden' }}>
+              <CorporateNetwork activeFirmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "firm_management" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'hidden' }}>
+              <FirmManagement 
+                user={user} 
+                onFirmChange={(firmId) => {
+                  getMyFirms().then(res => {
+                    const firm = res.data.find(f => f.id === firmId);
+                    if (firm) setActiveFirm(firm);
+                  });
+                }} 
+              />
+            </div>
+          )}
+
+          {activePage === "firm_templates" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <FirmTemplates firmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "cases" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <CaseManagement firmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "tasks" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <TaskBoard firmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "chat" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <InternalChat firmId={activeFirm?.id} user={user} />
+            </div>
+          )}
+
+          {activePage === "collections" && (
+            <div className="animate-fade-in" style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
+              <CollectionsManagement />
+            </div>
+          )}
+
+          {activePage === "uyap" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <UyapIntegration firmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "deadline_tracker" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <DeadlineTracker firmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "law_timeline" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
+              <LawTimeline />
             </div>
           )}
 
@@ -1098,6 +1329,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 8,
+    flexWrap: "wrap",
     borderTop: "1px solid var(--color-border-subtle)",
     paddingTop: 12,
   },
@@ -1113,6 +1345,31 @@ const styles = {
     border: "1px solid var(--color-border)",
     padding: "2px 6px",
     borderRadius: 4,
+  },
+  trustPanel: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTop: "1px solid var(--color-border-subtle)",
+  },
+  trustMetric: {
+    padding: "8px 10px",
+    borderRadius: 8,
+    background: "var(--color-bg-elevated)",
+    border: "1px solid var(--color-border-subtle)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+    minWidth: 0,
+  },
+  trustLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "var(--color-text-tertiary)",
+    textTransform: "uppercase",
+    letterSpacing: 0,
   },
 
   /* Empty state */
@@ -1160,6 +1417,7 @@ const styles = {
     display: "flex",
     gap: 8,
     alignItems: "center",
+    flexWrap: "wrap",
   },
   tagMahkeme: {
     fontSize: 12,
@@ -1210,6 +1468,42 @@ const styles = {
     fontSize: 11,
     color: "var(--color-text-tertiary)",
     background: "var(--color-bg-subtle)",
+    padding: "2px 8px",
+    borderRadius: 999,
+  },
+  cacheTag: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "var(--color-text-secondary)",
+    background: "var(--color-bg-muted)",
+    border: "1px solid var(--color-border-subtle)",
+    padding: "2px 8px",
+    borderRadius: 999,
+  },
+  liveTag: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#047857",
+    background: "#D1FAE5",
+    border: "1px solid #A7F3D0",
+    padding: "2px 8px",
+    borderRadius: 999,
+  },
+  verifiedTag: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#166534",
+    background: "#DCFCE7",
+    border: "1px solid #BBF7D0",
+    padding: "2px 8px",
+    borderRadius: 999,
+  },
+  reviewTag: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#92400E",
+    background: "#FEF3C7",
+    border: "1px solid #FDE68A",
     padding: "2px 8px",
     borderRadius: 999,
   },
@@ -1281,12 +1575,17 @@ const styles = {
   historyPage: {
     maxWidth: 720,
     width: "100%",
+    margin: "0 auto",
   },
   historyHeader: {
     display: "flex",
-    justifyContent: "space-between",
+    flexDirection: "column",
     alignItems: "center",
+    textAlign: "center",
+    gap: 16,
     marginBottom: 24,
+    paddingBottom: 16,
+    borderBottom: "1px solid var(--color-border)",
   },
   clearAllBtn: {
     display: "flex",

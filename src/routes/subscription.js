@@ -48,9 +48,19 @@ router.get('/my', authenticate, async (req, res, next) => {
       data: {
         planName: subscription.plan_name,
         maxSearchLimit: subscription.max_search_limit,
+        maxSeats: subscription.max_seats,
         startDate: subscription.start_date,
         endDate: subscription.end_date,
         isActive: subscription.is_active,
+        entitlements: subscription.feature_entitlements || {
+          maxSeats: subscription.max_seats,
+          maxCases: subscription.max_cases,
+          maxDocumentAnalyses: subscription.max_document_analyses,
+          maxWorkflows: subscription.max_workflows,
+          clientPortal: subscription.client_portal_enabled,
+          auditLogs: subscription.audit_logs_enabled,
+          privateKnowledgeBase: subscription.private_knowledge_base_enabled,
+        },
       },
     });
   } catch (error) {

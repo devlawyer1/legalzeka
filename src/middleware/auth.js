@@ -61,6 +61,21 @@ async function authenticate(req, res, next) {
       role: user.role_name,
     };
 
+    // 5. Kullanıcının aktif büro üyeliğini ekle (varsa)
+    const { rows: firmRows } = await pool.query(
+      `SELECT fu.firm_id, fu.firm_role, lf.name as firm_name
+       FROM firm_users fu
+       JOIN law_firms lf ON fu.firm_id = lf.id
+       WHERE fu.user_id = $1 AND fu.is_active = true AND lf.is_active = true
+       LIMIT 1`,
+      [user.id]
+    );
+    if (firmRows.length > 0) {
+      req.user.firmId = firmRows[0].firm_id;
+      req.user.firmRole = firmRows[0].firm_role;
+      req.user.firmName = firmRows[0].firm_name;
+    }
+
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {

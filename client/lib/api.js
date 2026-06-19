@@ -3,7 +3,7 @@
 // Backend ile iletişim katmanı
 // ============================================================
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 /**
  * Genel API istek fonksiyonu.
@@ -25,12 +25,29 @@ async function request(endpoint, options = {}) {
     }
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    const error = new Error("Sunucuya bağlanılamadı. Lütfen sunucunun çalıştığından emin olun.");
+    error.status = 503;
+    throw error;
+  }
 
-  const data = await response.json();
+  let data;
+  let responseText = "";
+  try {
+    responseText = await response.text();
+    data = JSON.parse(responseText);
+  } catch (err) {
+    const errorMsg = responseText ? responseText.substring(0, 150) : "Boş yanıt";
+    const error = new Error("Sunucudan geçersiz yanıt alındı. " + errorMsg);
+    error.status = response.status;
+    throw error;
+  }
 
   if (!response.ok) {
     // 401 Unauthorized ise çıkış yap ve login'e at (Login/Register hariç)
@@ -45,7 +62,7 @@ async function request(endpoint, options = {}) {
       }
     }
 
-    const error = new Error(data.message || "Bir hata oluştu");
+    const error = new Error(data.message || data.error || "Bir hata oluştu");
     error.status = response.status;
     error.code = data.code;
     error.data = data;
@@ -138,22 +155,39 @@ export function isAuthenticated() {
 
 // ======================== Search ========================
 
-export async function searchKeyword(query, page = 1, limit = 20) {
-  return request(`/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+export async function searchKeyword(query, page = 1, limit = 20, filters = {}) {
+  const queryParams = new URLSearchParams({
+    q: query,
+    page: page.toString(),
+    limit: limit.toString(),
+  });
+  
+  if (filters.mahkeme) queryParams.append("mahkeme", filters.mahkeme);
+  if (filters.hukuk_dali) queryParams.append("hukuk_dali", filters.hukuk_dali);
+  if (filters.yilMin) queryParams.append("yilMin", filters.yilMin);
+  if (filters.yilMax) queryParams.append("yilMax", filters.yilMax);
+
+  return request(`/search?${queryParams.toString()}`);
 }
 
-export async function searchSemantic(query) {
+export async function searchSemantic(query, filters = {}) {
   return request("/search/semantic", {
     method: "POST",
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, ...filters }),
   });
 }
 
-export async function askAI(query) {
+export async function askAI(query, filters = {}) {
   return request("/search/ask", {
     method: "POST",
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, ...filters }),
   });
+}
+
+// ======================== Workdesk ========================
+
+export async function getWorkdeskOverview(firmId) {
+  return request(`/workdesk/overview?firmId=${firmId}`);
 }
 
 // ======================== Analysis (AI Tools) ========================
@@ -169,13 +203,27 @@ async function requestFormData(endpoint, formData) {
     }
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+  } catch (err) {
+    const error = new Error("Sunucuya bağlanılamadı. Lütfen sunucunun çalıştığından emin olun.");
+    error.status = 503;
+    throw error;
+  }
 
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch (err) {
+    const error = new Error("Sunucudan geçersiz yanıt alındı.");
+    error.status = response.status;
+    throw error;
+  }
   if (!response.ok) {
     if (response.status === 401) {
       if (typeof window !== "undefined") {
@@ -199,6 +247,27 @@ export async function analyzeDevilsAdvocate(formData) {
 
 export async function analyzeContract(formData) {
   return requestFormData("/analysis/contract-review", formData);
+}
+
+// ======================== Legal Workflows (Expert Agents) ========================
+
+export async function getLegalWorkflowCatalog() {
+  return request("/legal-workflows");
+}
+
+export async function getLegalWorkflowProfile() {
+  return request("/legal-workflows/profile");
+}
+
+export async function updateLegalWorkflowProfile(data) {
+  return request("/legal-workflows/profile", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function runLegalWorkflow(formData) {
+  return requestFormData("/legal-workflows/run", formData);
 }
 
 // ======================== Subscriptions ========================
@@ -294,4 +363,462 @@ export function deleteNote(id) {
   let notes = getNotes();
   notes = notes.filter(n => n.id !== id);
   localStorage.setItem("user_notes", JSON.stringify(notes));
+}
+
+// ======================== Collections ========================
+
+export async function getCollections() {
+  return request("/collections");
+}
+
+export async function createCollection(data) {
+  return request("/collections", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCollection(id) {
+  return request(`/collections/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getCollectionItems(id) {
+  return request(`/collections/${id}/items`);
+}
+
+export async function addItemToCollection(collectionId, emsal_karar_id) {
+  return request(`/collections/${collectionId}/items`, {
+    method: "POST",
+    body: JSON.stringify({ emsal_karar_id }),
+  });
+}
+
+export async function removeItemFromCollection(collectionId, emsal_karar_id) {
+  return request(`/collections/${collectionId}/items/${emsal_karar_id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function removeFromCollection(collectionId, itemId) {
+  return request(`/collections/${collectionId}/items/${itemId}`, {
+    method: "DELETE",
+  });
+}
+
+// ======================== Cases ========================
+
+export async function getCases(firmId) {
+  return request(`/cases?firmId=${firmId}`);
+}
+
+export async function createCase(firmId, data) {
+  return request("/cases", {
+    method: "POST",
+    body: JSON.stringify({ firmId, ...data }),
+  });
+}
+
+export async function updateCase(firmId, caseId, data) {
+  return request(`/cases/${caseId}`, {
+    method: "PUT",
+    body: JSON.stringify({ firmId, ...data }),
+  });
+}
+
+export async function deleteCase(firmId, caseId) {
+  return request(`/cases/${caseId}?firmId=${firmId}`, {
+    method: "DELETE",
+  });
+}
+
+// ======================== Newsletter ========================
+
+export async function subscribeToNewsletter(email, categories = ["Tümü"]) {
+  return request("/newsletter/subscribe", {
+    method: "POST",
+    body: JSON.stringify({ email, categories }),
+  });
+}
+
+export async function unsubscribeFromNewsletter(email) {
+  return request("/newsletter/unsubscribe", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+// ======================== UYAP ========================
+
+export async function triggerUyapSync(firmId, { tcKimlik, password }) {
+  return request("/uyap/sync", {
+    method: "POST",
+    body: JSON.stringify({ firmId, tcKimlik, password }),
+  });
+}
+
+export async function getUyapSyncLogs(firmId, limit = 20) {
+  return request(`/uyap/sync/logs?firmId=${firmId}&limit=${limit}`);
+}
+
+export async function getUyapSyncStatus(firmId) {
+  return request(`/uyap/sync/status?firmId=${firmId}`);
+}
+
+export async function getUyapNotifications(firmId, { unreadOnly = false, limit = 50 } = {}) {
+  const params = new URLSearchParams({ firmId, limit: limit.toString() });
+  if (unreadOnly) params.append("unreadOnly", "true");
+  return request(`/uyap/notifications?${params.toString()}`);
+}
+
+export async function getUyapUnreadCount(firmId) {
+  return request(`/uyap/notifications/unread-count?firmId=${firmId}`);
+}
+
+export async function markUyapNotificationRead(firmId, notificationId) {
+  return request(`/uyap/notifications/${notificationId}/read?firmId=${firmId}`, {
+    method: "PUT",
+  });
+}
+
+export async function markAllUyapNotificationsRead(firmId) {
+  return request(`/uyap/notifications/read-all?firmId=${firmId}`, {
+    method: "PUT",
+  });
+}
+
+export async function getUyapCases(firmId) {
+  return request(`/uyap/cases?firmId=${firmId}`);
+}
+
+export async function getUyapDocuments(firmId, filters = {}) {
+  const params = new URLSearchParams({ firmId });
+  if (filters.caseId) params.append("caseId", filters.caseId);
+  if (filters.type && filters.type !== "all") params.append("type", filters.type);
+  return request(`/uyap/documents?${params.toString()}`);
+}
+
+export async function downloadUyapDocument(firmId, documentId) {
+  return request(`/uyap/documents/${documentId}/download?firmId=${firmId}`);
+}
+
+export async function analyzeUyapDocument(firmId, documentId) {
+  return request(`/uyap/documents/${documentId}/analyze`, {
+    method: "POST",
+    body: JSON.stringify({ firmId }),
+  });
+}
+
+// ==========================================
+// Firm Management
+// ==========================================
+export async function getMyFirms() {
+  return request("/firms");
+}
+
+export async function createFirm(data) {
+  return request("/firms", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getFirmDetails(firmId) {
+  return request(`/firms/${firmId}`);
+}
+
+export async function getFirmMembers(firmId) {
+  return request(`/firms/${firmId}/members`);
+}
+
+export async function getFirmInvitations(firmId) {
+  return request(`/firms/${firmId}/invitations`);
+}
+
+export async function inviteFirmMember(firmId, data) {
+  return request(`/firms/${firmId}/invite`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateFirmMemberRole(firmId, userId, firmRole) {
+  return request(`/firms/${firmId}/members/${userId}/role`, {
+    method: "PUT",
+    body: JSON.stringify({ firmRole }),
+  });
+}
+
+export async function removeFirmMember(firmId, userId) {
+  return request(`/firms/${firmId}/members/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function updateFirm(firmId, data) {
+  return request(`/firms/${firmId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+// ==========================================
+// Firm Templates (RAG)
+// ==========================================
+export async function getFirmTemplates(firmId) {
+  return request(`/firms/${firmId}/templates`);
+}
+
+export async function createFirmTemplate(firmId, data) {
+  return request(`/firms/${firmId}/templates`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteFirmTemplate(firmId, id) {
+  return request(`/firms/${firmId}/templates/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function generateDraftFromTemplates(firmId, prompt, caseData) {
+  return request(`/firms/${firmId}/templates/generate-draft`, {
+    method: "POST",
+    body: JSON.stringify({ prompt, caseData }),
+  });
+}
+
+// ==========================================
+// Tasks
+// ==========================================
+export async function getTasks(firmId) {
+  return request(`/tasks?firmId=${firmId}`);
+}
+
+export async function createTask(firmId, data) {
+  return request("/tasks", {
+    method: "POST",
+    body: JSON.stringify({ firmId, ...data }),
+  });
+}
+
+export async function updateTask(firmId, id, data) {
+  return request(`/tasks/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ firmId, ...data }),
+  });
+}
+
+export async function deleteTask(firmId, id) {
+  return request(`/tasks/${id}?firmId=${firmId}`, {
+    method: "DELETE",
+  });
+}
+
+// ==========================================
+// Internal Chat
+// ==========================================
+export async function getInternalMessages(firmId, limit = 50, offset = 0) {
+  return request(`/internal-chat?firmId=${firmId}&limit=${limit}&offset=${offset}`);
+}
+
+export async function sendInternalMessage(firmId, icerik) {
+  return request("/internal-chat", {
+    method: "POST",
+    body: JSON.stringify({ firmId, icerik }),
+  });
+}
+
+// ==========================================
+// Petitions
+// ==========================================
+export async function getPetitions(firmId, caseId) {
+  return request(`/cases/${caseId}/petitions`);
+}
+
+export async function createPetition(firmId, caseId, data) {
+  return request(`/cases/${caseId}/petitions`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function generateAiPetition(firmId, caseId, data) {
+  return request(`/cases/${caseId}/petitions/generate`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePetition(firmId, caseId, id) {
+  return request(`/cases/${caseId}/petitions/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getPetitionComparisons(firmId, caseId) {
+  return request(`/cases/${caseId}/petitions/comparisons`);
+}
+
+export async function compareAiPetitions(firmId, caseId, data) {
+  return request(`/cases/${caseId}/petitions/compare`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// ==========================================
+// Deadline Alerts
+// ==========================================
+export async function getActiveDeadlines(firmId) {
+  return request(`/deadlines/active?firmId=${firmId}`);
+}
+
+export async function getAllDeadlines(firmId, { limit = 50, offset = 0 } = {}) {
+  return request(`/deadlines/all?firmId=${firmId}&limit=${limit}&offset=${offset}`);
+}
+
+export async function getUrgentDeadlineCount(firmId) {
+  return request(`/deadlines/urgent-count?firmId=${firmId}`);
+}
+
+export async function createDeadline(data) {
+  return request("/deadlines", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function acknowledgeDeadline(id) {
+  return request(`/deadlines/${id}/acknowledge`, { method: "PUT" });
+}
+
+export async function deleteDeadline(id) {
+  return request(`/deadlines/${id}`, { method: "DELETE" });
+}
+
+// ==========================================
+// Case Timeline
+// ==========================================
+export async function getCaseTimeline(caseId) {
+  return request(`/cases/${caseId}/timeline`);
+}
+
+export async function getCaseWorkspace(caseId) {
+  return request(`/cases/${caseId}/workspace`);
+}
+
+export async function getCaseDocuments(caseId) {
+  return request(`/cases/${caseId}/documents`);
+}
+
+export async function uploadCaseDocument(caseId, formData) {
+  return requestFormData(`/cases/${caseId}/documents`, formData);
+}
+
+export async function analyzeCaseDocument(caseId, documentId) {
+  return request(`/cases/${caseId}/documents/${documentId}/analyze`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+// ==========================================
+// Law Versioning (Time-Travel)
+// ==========================================
+export async function searchLaws(query, date) {
+  const params = new URLSearchParams({ q: query });
+  if (date) params.append("date", date);
+  return request(`/laws/search?${params.toString()}`);
+}
+
+export async function getLawHistory(lawNumber, articleNumber) {
+  const path = articleNumber
+    ? `/laws/${lawNumber}/history/${encodeURIComponent(articleNumber)}`
+    : `/laws/${lawNumber}/history`;
+  return request(path);
+}
+
+export async function getLawAtDate(lawNumber, articleNumber, date) {
+  const encodedArticle = articleNumber ? encodeURIComponent(articleNumber) : '';
+  return request(`/laws/${lawNumber}/${encodedArticle}/at?date=${date}`);
+}
+
+export async function getLawList() {
+  return request("/laws/list");
+}
+export async function getCorporateTree(firmId) {
+  return request(`/firms/${firmId}/corporate/tree`);
+}
+
+export async function createCorporateEntity(firmId, data) {
+  return request(`/firms/${firmId}/corporate/tree`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getTickets(firmId) {
+  return request(`/firms/${firmId}/corporate/tickets`);
+}
+
+export async function createTicket(firmId, data) {
+  return request(`/firms/${firmId}/corporate/tickets`, {
+
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateTicketStatus(firmId, id, status) {
+  return request(`/firms/${firmId}/corporate/tickets/${id}/status`, {
+    method: "PUT",
+    body: JSON.stringify({ status }),
+  });
+}
+
+// ==========================================
+// Tevkil Pazarı (Yetki Devri)
+// ==========================================
+
+export async function createTevkilAd(data) {
+  return request("/tevkil/ads", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getTevkilAds() {
+  return request("/tevkil/ads");
+}
+
+export async function getMyTevkilAds() {
+  return request("/tevkil/my-ads");
+}
+
+export async function applyToTevkilAd(ad_id, message) {
+  return request("/tevkil/apply", {
+    method: "POST",
+    body: JSON.stringify({ ad_id, message }),
+  });
+}
+
+export async function getMyTevkilApplications() {
+  return request("/tevkil/my-applications");
+}
+
+export async function handleTevkilApplication(application_id, action) {
+  return request("/tevkil/handle-application", {
+    method: "POST",
+    body: JSON.stringify({ application_id, action }),
+  });
+}
+
+export async function improveTevkilDescriptionAI(description) {
+  return request("/tevkil/improve-description", {
+    method: "POST",
+    body: JSON.stringify({ description }),
+  });
 }

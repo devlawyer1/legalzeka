@@ -7,7 +7,7 @@ Avukatların emsal kararları anahtar kelimeler ve semantik arama ile bulmasın�
 ### 🛠️ Teknolojiler
 - **Runtime:** Node.js
 - **Framework:** Express.js
-- **Veritabanı:** MySQL (Docker)
+- **Veritabanı:** PostgreSQL (Docker)
 - **Kimlik Doğrulama:** JWT (JSON Web Token)
 - **Şifreleme:** bcryptjs
 - **Doğrulama:** express-validator
@@ -23,7 +23,7 @@ emsal-atlasi/
 └── src/
     ├── app.js                   # Express uygulaması
     ├── config/
-    │   ├── db.js                # MySQL bağlantı havuzu
+    │   ├── db.js                # PostgreSQL bağlantı havuzu
     │   └── database.sql         # Veritabanı şeması
     ├── controllers/
     │   └── authController.js    # Kayıt/Giriş iş mantığı
@@ -58,7 +58,7 @@ npm install
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=SENIN_MYSQL_SIFREN
+DB_PASSWORD=SENIN_POSTGRES_SIFREN
 DB_NAME=emsal_atlasi
 JWT_SECRET=GUCLU_BIR_SECRET_KEY
 ```

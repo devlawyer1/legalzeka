@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { analyzeContract } from "@/lib/api";
+import { FileText } from "lucide-react";
 
 export default function ContractReview({ onSaveNote }) {
   const [file, setFile] = useState(null);
@@ -60,9 +61,6 @@ export default function ContractReview({ onSaveNote }) {
   return (
     <div style={styles.container} className="animate-fade-in">
       <div style={styles.header}>
-        <div style={styles.iconWrapper}>
-          <span style={{ fontSize: 24 }}>📝</span>
-        </div>
         <div>
           <h2 style={styles.title}>Sözleşme İnceleme (Redlining)</h2>
           <p style={styles.subtitle}>
@@ -147,7 +145,7 @@ export default function ContractReview({ onSaveNote }) {
               Sözleşme İnceleniyor...
             </>
           ) : (
-            "Sözleşmeyi İncele 📝"
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>Sözleşmeyi İncele <FileText size={18} /></span>
           )}
         </button>
 
@@ -185,17 +183,6 @@ const styles = {
     gap: 20,
     marginBottom: 30,
     padding: "0 20px",
-  },
-  iconWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: "16px",
-    background: "linear-gradient(135deg, #4F46E5, #818CF8)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    boxShadow: "0 10px 15px -3px rgba(79, 70, 229, 0.3)",
   },
   title: {
     fontSize: 24,
@@ -281,13 +268,13 @@ const styles = {
     transition: "opacity 0.2s",
   },
   errorCard: {
-    background: "#FEE2E2",
-    color: "#DC2626",
+    background: "rgba(239, 68, 68, 0.1)",
+    color: "var(--color-error)",
     padding: 12,
     borderRadius: "var(--radius-sm)",
     marginBottom: 20,
     fontSize: 14,
-    border: "1px solid #FECACA",
+    border: "1px solid rgba(239, 68, 68, 0.2)",
   },
   resultContainer: {
     marginTop: 30,

@@ -1,26 +1,18 @@
 // ============================================================
 // Emsal Atlası - AWS Bedrock Service
-// Model: Claude 4.5 Haiku (Cross-Region — us.anthropic)
+// Model: Claude 3.5 Haiku (Cross-Region)
 // ============================================================
-
-/**
- * AWS Bedrock Service — Claude 4.5 Haiku modeline istek atar.
- * 
- * Kimlik bilgileri .env dosyasından okunur:
- *   - AWS_ACCESS_KEY_ID
- *   - AWS_SECRET_ACCESS_KEY
- *   - AWS_REGION (varsayılan: us-east-1)
- * 
- * Cross-Region Inference ile us.anthropic.claude-haiku-4-5-20251001-v1:0 kullanılır.
- */
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const {
   BedrockRuntimeClient,
-  InvokeModelCommand,
+  ConverseCommand,
 } = require('@aws-sdk/client-bedrock-runtime');
+
+// Import the MCP Agent Service
+const mcpAgentService = require('./mcpAgentService');
 
 // ── AWS İstemcisi ────────────────────────────────────────────
 const bedrockClient = new BedrockRuntimeClient({
@@ -31,26 +23,13 @@ const bedrockClient = new BedrockRuntimeClient({
   },
 });
 
-// ── Model Konfigürasyonu ─────────────────────────────────────
-// Başındaki "us." takısını sildik. Doğrudan standart Haiku 3'ü çağırıyoruz.
 const MODEL_ID = 'anthropic.claude-3-haiku-20240307-v1:0';
-const ANTHROPIC_VERSION = 'bedrock-2023-05-31';
 
 const BEDROCK_SYSTEM_PROMPT =
-  'Sen Legal Zeka platformunun yapay zeka asistanısın. Avukatların sorularını profesyonelce yanıtlarsın. Seni "LegalZeka" ekibi geliştirdi. Sana "Seni kim geliştirdi?", "Kimin eserisin?" gibi sorular sorulduğunda Google, Anthropic vb. şirketlerin ismini KESİNLİKLE anma, sadece "LegalZeka ekibi tarafından geliştirildim" de.';
-
-// ── Ana Fonksiyon ────────────────────────────────────────────
+  'Sen Legal Zeka platformunun yapay zeka asistanısın. Avukatların sorularını profesyonelce yanıtlarsın. Seni "LegalZeka" ekibi geliştirdi. Sana "Seni kim geliştirdi?", "Kimin eserisin?" gibi sorular sorulduğunda Google, Anthropic vb. şirketlerin ismini KESİNLİKLE anma, sadece "LegalZeka ekibi tarafından geliştirildim" de.\n\nEğer bir emsal karar veya yargı kararı aranıyorsa mutlaka sana sunulan araçları (tools) kullan.';
 
 /**
- * AWS Bedrock üzerinden Claude 4.5 Haiku'ya mesaj gönderir.
- * 
- * @param {string} userMessage - Kullanıcının gönderdiği mesaj.
- * @param {Object} [options] - Opsiyonel ayarlar.
- * @param {string} [options.systemPrompt] - Özel system prompt (varsayılan: BEDROCK_SYSTEM_PROMPT).
- * @param {number} [options.maxTokens] - Maksimum token sayısı (varsayılan: 4096).
- * @param {number} [options.temperature] - Yaratıcılık seviyesi 0-1 (varsayılan: 0.7).
- * @param {Array}  [options.conversationHistory] - Önceki mesaj geçmişi [{role, content}].
- * @returns {Promise<string>} - Modelin ürettiği yanıt metni.
+ * AWS Bedrock üzerinden Claude 4.5 Haiku'ya mesaj gönderir ve Tool çağrılarını (MCP) otomatik yönetir.
  */
 async function invokeBedrockClaude(userMessage, options = {}) {
   const {
@@ -60,85 +39,132 @@ async function invokeBedrockClaude(userMessage, options = {}) {
     conversationHistory = [],
   } = options;
 
-  // Kimlik bilgileri kontrolü
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-    throw new Error(
-      'AWS kimlik bilgileri eksik! Lütfen .env dosyasına AWS_ACCESS_KEY_ID ve AWS_SECRET_ACCESS_KEY ekleyin.'
-    );
+    throw new Error('AWS kimlik bilgileri eksik!');
   }
 
-  // Anthropic Messages API formatında payload
+  // Ensure MCP is connected
+  try {
+    await mcpAgentService.connect();
+  } catch (err) {
+    console.warn("MCP Server connection failed, proceeding without tools.", err.message);
+  }
+
+  // Build the conversation history
   const messages = [
     ...conversationHistory.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
+      role: msg.role === 'user' ? 'user' : 'assistant', // Map role correctly
+      content: [{ text: msg.content }],
     })),
     {
       role: 'user',
-      content: userMessage,
+      content: [{ text: userMessage }],
     },
   ];
 
-  const payload = {
-    anthropic_version: ANTHROPIC_VERSION,
-    system: systemPrompt,
-    messages,
-    max_tokens: maxTokens,
-    temperature,
-    top_p: 0.9,
-  };
+  let stopReason = '';
+  let finalResponse = '';
 
-  const command = new InvokeModelCommand({
-    modelId: MODEL_ID,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body: JSON.stringify(payload),
-  });
+  // Max 5 tool call iterations
+  let iteration = 0;
+  const MAX_ITERATIONS = 5;
 
-  try {
-    const response = await bedrockClient.send(command);
+  while (iteration < MAX_ITERATIONS) {
+    iteration++;
+    
+    // Construct the payload for ConverseCommand
+    const commandPayload = {
+      modelId: MODEL_ID,
+      system: [{ text: systemPrompt }],
+      messages: messages,
+      inferenceConfig: {
+        maxTokens,
+        temperature,
+        topP: 0.9,
+      }
+    };
 
-    // Yanıtı parse et
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-
-    if (responseBody.content && responseBody.content.length > 0) {
-      return responseBody.content[0].text;
+    // Attach tools if MCP is connected
+    const bedrockToolConfig = mcpAgentService.getBedrockToolConfig();
+    if (mcpAgentService.isConnected && bedrockToolConfig.tools.length > 0) {
+      commandPayload.toolConfig = bedrockToolConfig;
     }
 
-    return 'Yanıt üretilemedi.';
-  } catch (error) {
-    // DEBUG: Ham hata detaylarını logla
-    console.error('🔴 Bedrock RAW Error:', {
-      name: error.name,
-      message: error.message,
-      code: error.$metadata?.httpStatusCode,
-      requestId: error.$metadata?.requestId,
-    });
+    try {
+      console.log(`[Bedrock] Sending message to Claude (Iteration ${iteration})...`);
+      const command = new ConverseCommand(commandPayload);
+      const response = await bedrockClient.send(command);
 
-    // Hata türlerine göre anlaşılır mesajlar
-    if (error.name === 'AccessDeniedException') {
-      throw new Error(
-        'AWS erişim reddedildi. IAM kullanıcınızın Bedrock erişim izinleri olduğundan emin olun.'
-      );
-    }
-    if (error.name === 'ValidationException') {
-      throw new Error(
-        `Bedrock doğrulama hatası: ${error.message}. Model ID veya payload formatını kontrol edin.`
-      );
-    }
-    if (error.name === 'ThrottlingException') {
-      throw new Error(
-        'AWS Bedrock istek limiti aşıldı. Lütfen biraz bekleyip tekrar deneyin.'
-      );
-    }
-    if (error.name === 'ModelNotReadyException') {
-      throw new Error(
-        'Model henüz hazır değil. Bedrock konsolundan model erişimini etkinleştirdiğinizden emin olun.'
-      );
-    }
+      const assistantMessage = response.output.message;
+      messages.push(assistantMessage); // Append assistant's response to history
+      stopReason = response.stopReason;
 
-    throw new Error(`AWS Bedrock hatası: ${error.message}`);
+      // Extract text content if any
+      const textBlock = assistantMessage.content.find(c => c.text);
+      if (textBlock) {
+        finalResponse += textBlock.text;
+      }
+
+      // Check if the model wants to use a tool
+      if (stopReason === 'tool_use') {
+        const toolUseBlocks = assistantMessage.content.filter(c => c.toolUse);
+        
+        // Prepare the user message with tool results
+        const toolResults = [];
+
+        for (const block of toolUseBlocks) {
+          const toolUse = block.toolUse;
+          console.log(`[Bedrock] Model requested tool: ${toolUse.name}`);
+          
+          try {
+            // Execute the tool via MCP
+            const toolOutput = await mcpAgentService.executeTool(toolUse.name, toolUse.input);
+            
+            toolResults.push({
+              toolResult: {
+                toolUseId: toolUse.toolUseId,
+                content: [{ text: toolOutput }],
+                status: 'success'
+              }
+            });
+          } catch (toolError) {
+            console.error(`[Bedrock] Tool execution error for ${toolUse.name}:`, toolError);
+            toolResults.push({
+              toolResult: {
+                toolUseId: toolUse.toolUseId,
+                content: [{ text: `Error executing tool: ${toolError.message}` }],
+                status: 'error'
+              }
+            });
+          }
+        }
+
+        // Add the tool results back to the messages to continue the conversation
+        messages.push({
+          role: 'user',
+          content: toolResults
+        });
+        
+        // Loop will continue and send the tool results back to Claude
+      } else {
+        // Model is done
+        break;
+      }
+
+    } catch (error) {
+      console.error('🔴 Bedrock RAW Error:', {
+        name: error.name,
+        message: error.message,
+      });
+      throw new Error(`AWS Bedrock hatası: ${error.message}`);
+    }
   }
+
+  if (iteration >= MAX_ITERATIONS) {
+    console.warn("[Bedrock] Reached maximum tool call iterations.");
+  }
+
+  return finalResponse || 'Yanıt üretilemedi.';
 }
 
 module.exports = {

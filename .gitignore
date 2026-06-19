@@ -2,6 +2,20 @@ node_modules/
 .env
 *.log
 
+# Local checkout of the separately owned LegalZeka Yargi MCP fork/mirror.
+services/yargi-mcp/
+
+# Scratch and one-off helper artifacts
+scratch/
+ask_output.json
+page.patch
+fix*.js
+doFix.js
+create_firm_templates_table.js
+temp_migrate.js
+update.js
+scriptsrewriteinternalchat.js
+
 # Next.js
 .next/
 out/

@@ -1,6 +1,6 @@
 // ============================================================
 // Emsal Atlası - Database Configuration
-// MySQL bağlantı havuzu (Connection Pool) yapılandırması
+// PostgreSQL bağlantı havuzu (Connection Pool) yapılandırması
 // ============================================================
 
 const { Pool } = require('pg');
@@ -9,9 +9,9 @@ require('dotenv').config();
 // Supabase (PostgreSQL) bağlantı havuzu
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL, // Supabase'den alacağınız connection string
-  ssl: {
-    rejectUnauthorized: false // Supabase bağlantıları için genellikle gereklidir
-  }
+  // ssl: {
+  //   rejectUnauthorized: false // Supabase bağlantıları için genellikle gereklidir
+  // }
 });
 
 // Eğer DATABASE_URL yerine host, user, password vb. kullanmak istenirse:

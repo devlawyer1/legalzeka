@@ -19,15 +19,18 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const allowedMimes = [
     'application/pdf',
+    'text/plain',
     'image/jpeg',
     'image/png',
-    'image/jpg'
+    'image/jpg',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ];
 
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Desteklenmeyen dosya türü. Lütfen sadece PDF, JPG veya PNG yükleyin.'), false);
+    cb(new Error('Desteklenmeyen dosya türü. Lütfen sadece PDF, Word, JPG, PNG veya TXT yükleyin.'), false);
   }
 };
 
