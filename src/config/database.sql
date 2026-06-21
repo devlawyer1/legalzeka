@@ -663,3 +663,85 @@ INSERT INTO schema_migrations (version)
 VALUES ('2026-06-18-legalzeka-avukat-buro-core')
 ON CONFLICT (version) DO NOTHING;
 
+-- ============================================================
+-- Legal Corpus: karar + mevzuat cache tablolari
+-- Python legal-data-worker bu tablolari doldurur.
+-- Express /api/search bu tablolari mevcut emsal_kararlar ile birlikte tarar.
+-- ============================================================
+
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS decisions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source VARCHAR(50) NOT NULL,
+    court VARCHAR(100),
+    chamber VARCHAR(150),
+    esas_no VARCHAR(50),
+    karar_no VARCHAR(50),
+    decision_date DATE,
+    raw_text TEXT NOT NULL,
+    raw_html TEXT,
+    source_doc_id VARCHAR(150) NOT NULL,
+    metadata JSONB DEFAULT '{}',
+    fetched_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(source, source_doc_id)
+);
+
+CREATE TABLE IF NOT EXISTS decision_chunks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    decision_id UUID REFERENCES decisions(id) ON DELETE CASCADE,
+    chunk_index INT NOT NULL,
+    chunk_text TEXT NOT NULL,
+    embedding VECTOR(1024),
+    tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('turkish', chunk_text)) STORED
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_hnsw
+    ON decision_chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_chunks_tsv
+    ON decision_chunks USING gin(tsv);
+CREATE INDEX IF NOT EXISTS idx_decisions_source_date
+    ON decisions (source, decision_date DESC);
+
+CREATE TABLE IF NOT EXISTS legislation (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    law_name VARCHAR(300),
+    law_no VARCHAR(50),
+    law_type VARCHAR(50),
+    rg_date DATE,
+    rg_no VARCHAR(50),
+    source_doc_id VARCHAR(150) UNIQUE NOT NULL,
+    metadata JSONB DEFAULT '{}',
+    fetched_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS legislation_articles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    legislation_id UUID REFERENCES legislation(id) ON DELETE CASCADE,
+    madde_no VARCHAR(20),
+    madde_text TEXT NOT NULL,
+    embedding VECTOR(1024),
+    tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('turkish', madde_text)) STORED
+);
+
+CREATE INDEX IF NOT EXISTS idx_articles_hnsw
+    ON legislation_articles USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_articles_tsv
+    ON legislation_articles USING gin(tsv);
+CREATE INDEX IF NOT EXISTS idx_legislation_law_no
+    ON legislation (law_no);
+
+CREATE TABLE IF NOT EXISTS ingestion_log (
+    source VARCHAR(50) PRIMARY KEY,
+    last_synced_at TIMESTAMPTZ,
+    last_run_status VARCHAR(20),
+    records_fetched_last_run INT DEFAULT 0,
+    last_cursor JSONB DEFAULT '{}',
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+INSERT INTO schema_migrations (version)
+VALUES ('2026-06-22-legal-corpus-cache')
+ON CONFLICT (version) DO NOTHING;
+

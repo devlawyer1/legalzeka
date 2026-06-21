@@ -1,6 +1,8 @@
 node_modules/
 .env
 *.log
+__pycache__/
+*.pyc
 
 # Local checkout of the separately owned LegalZeka Yargi MCP fork/mirror.
 services/yargi-mcp/

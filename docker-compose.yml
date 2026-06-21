@@ -1,10 +1,7 @@
-version: "3.8"
-
 services:
 
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: emsal_atlasi_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -19,7 +16,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: legalzeka_backend
     restart: unless-stopped
     depends_on:
       - postgres
@@ -30,12 +26,46 @@ services:
       - PORT=3001
       - DATABASE_URL=postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi
       - YARGI_MCP_URL=http://yargi-mcp:8000
+      - LEGAL_CORPUS_ENABLED=true
+      - LEGAL_CORPUS_SEMANTIC_ENABLED=false
+      - LEGAL_CORPUS_EMBEDDING_URL=http://embedding:80
     ports:
       - "3001:3001"
 
+  legal-data-worker:
+    build:
+      context: ./services/legal-data-worker
+    profiles:
+      - worker
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi
+      - EMBEDDING_BASE_URL=http://embedding:80
+      - EMBEDDING_ENABLED=false
+      - BEDESTEN_PHRASE=karar
+      - REQUEST_DELAY_MS=1500
+      - REQUEST_DELAY_JITTER_MS=1000
+      - MEVZUAT_MODE=all
+      - MEVZUAT_PAGE_SIZE=50
+      - MEVZUAT_MAX_RECORDS=0
+      - BEDESTEN_PAGE_COOLDOWN_MS=10000
+      - BEDESTEN_429_SLEEP_MS=90000
+    depends_on:
+      - postgres
+    restart: "no"
+
+  embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    profiles:
+      - embedding
+    command: --model-id intfloat/multilingual-e5-large
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
   yargi-mcp:
     image: ghcr.io/devlawyer1/yargi-mcp:v0.2.0-lz.1
-    container_name: yargi_mcp_server
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -46,7 +76,6 @@ services:
   client:
     build:
       context: ./client
-    container_name: legalzeka_client
     restart: unless-stopped
     depends_on:
       - backend

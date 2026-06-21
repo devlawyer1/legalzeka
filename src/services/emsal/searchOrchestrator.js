@@ -2,6 +2,7 @@ const { pool } = require('../../config/db');
 const { generateEmbedding } = require('../../utils/embedding');
 const yargiMcpClient = require('./yargiMcpClient');
 const { fetchDecisionDocument, hydrateDecisionsForRag, indexDecisionsInBackground } = require('./mcpIngestor');
+const { searchLegalCorpus } = require('../legalCorpusSearch');
 
 const DEFAULT_LIMIT = 20;
 const DEFAULT_PAGE = 1;
@@ -12,6 +13,7 @@ const MCP_VERIFY_LIMIT = parseInt(process.env.EMSAL_MCP_VERIFY_LIMIT || '8', 10)
 const FAMILY_MCP_VERIFY_LIMIT = parseInt(process.env.EMSAL_FAMILY_MCP_VERIFY_LIMIT || '6', 10);
 const MCP_VERIFY_CONCURRENCY = parseInt(process.env.EMSAL_MCP_VERIFY_CONCURRENCY || '2', 10);
 const LOCAL_VECTOR_MIN_SCORE = parseFloat(process.env.EMSAL_VECTOR_MIN_SCORE || '0.62');
+const LOCAL_VECTOR_ENABLED = process.env.EMSAL_LOCAL_VECTOR_ENABLED !== 'false';
 const MIN_DOCUMENT_TEXT_LENGTH = 80;
 const CURRENT_YEAR = new Date().getFullYear();
 const INCLUDE_DEMO_RESULTS = process.env.EMSAL_INCLUDE_DEMO_RESULTS === 'true';
@@ -34,6 +36,12 @@ const SOURCE_LABELS = {
   sayistay: 'Sayistay',
   anayasa: 'Anayasa Mahkemesi',
   uyusmazlik: 'Uyusmazlik Mahkemesi',
+  mevzuat: 'Mevzuat',
+  bedesten_yargitay: 'Yargitay Corpus',
+  bedesten_bam: 'BAM Corpus',
+  danistay: 'Danistay Corpus',
+  aym_norm: 'AYM Norm Corpus',
+  aym_bireysel: 'AYM Bireysel Corpus',
 };
 
 const DOMAIN_ROUTES = [
@@ -866,7 +874,13 @@ async function searchEmsal({
 
   const localResults = await Promise.allSettled([
     localKeywordSearch(normalizedQuery, filters, candidateLimit),
-    localVectorSearch(normalizedQuery, filters, candidateLimit),
+    LOCAL_VECTOR_ENABLED ? localVectorSearch(normalizedQuery, filters, candidateLimit) : Promise.resolve([]),
+    searchLegalCorpus({
+      query: normalizedQuery,
+      mode,
+      filters,
+      limit: candidateLimit,
+    }),
   ]);
 
   const resultSets = [];
@@ -880,14 +894,19 @@ async function searchEmsal({
 
   const localKeyword = localResults[0].status === 'fulfilled' ? localResults[0].value : [];
   const localVector = localResults[1].status === 'fulfilled' ? localResults[1].value : [];
+  const legalCorpus = localResults[2].status === 'fulfilled' ? localResults[2].value : { results: [], diagnostics: {} };
 
   diagnostics.local.keyword_count = localKeyword.length;
   diagnostics.local.vector_count = localVector.length;
+  diagnostics.local.legal_corpus_count = legalCorpus.results.length;
+  diagnostics.local.legal_corpus = legalCorpus.diagnostics;
   if (localResults[0].status === 'rejected') diagnostics.local.keyword_error = localResults[0].reason.message;
   if (localResults[1].status === 'rejected') diagnostics.local.vector_error = localResults[1].reason.message;
+  if (localResults[2].status === 'rejected') diagnostics.local.legal_corpus_error = localResults[2].reason.message;
 
   resultSets.push({ name: 'local_fts', weight: 1.25, results: localKeyword });
   resultSets.push({ name: 'local_vector', weight: mode === 'keyword' ? 1.0 : 1.2, results: localVector });
+  resultSets.push({ name: 'legal_corpus', weight: 1.35, results: legalCorpus.results });
 
   if (includeLive && process.env.EMSAL_LIVE_MCP !== 'false') {
     const calls = routedSources.flatMap((source) => buildMcpCalls(source, normalizedQuery, filters));

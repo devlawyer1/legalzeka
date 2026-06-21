@@ -9,7 +9,7 @@ RUN npm ci
 
 COPY server.js ./
 COPY src ./src
-COPY uploads ./uploads
+RUN mkdir -p uploads
 
 EXPOSE 3001
 
