@@ -9,6 +9,8 @@ services/yargi-mcp/
 
 # Scratch and one-off helper artifacts
 scratch/
+backups/
+*.dump
 ask_output.json
 page.patch
 fix*.js
