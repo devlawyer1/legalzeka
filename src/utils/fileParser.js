@@ -1,7 +1,26 @@
 const fs = require('fs');
-const pdfParse = require('pdf-parse');
+const pdfParseLib = require('pdf-parse');
 const Tesseract = require('tesseract.js');
 const path = require('path');
+
+async function parsePdfBuffer(dataBuffer) {
+  if (typeof pdfParseLib === 'function') {
+    const data = await pdfParseLib(dataBuffer);
+    return data.text || '';
+  }
+
+  if (typeof pdfParseLib.PDFParse === 'function') {
+    const parser = new pdfParseLib.PDFParse({ data: dataBuffer });
+    try {
+      const data = await parser.getText();
+      return data.text || '';
+    } finally {
+      await parser.destroy();
+    }
+  }
+
+  throw new Error('PDF parser desteklenmeyen bir API dondurdu.');
+}
 
 /**
  * Verilen dosyanın türüne göre metnini çıkarır ve ardından dosyayı siler.
@@ -14,8 +33,7 @@ async function parseFileText(filePath) {
 
   if (ext === '.pdf') {
     const dataBuffer = fs.readFileSync(filePath);
-    const data = await pdfParse(dataBuffer);
-    text = data.text;
+    text = await parsePdfBuffer(dataBuffer);
   } else if (['.jpg', '.jpeg', '.png'].includes(ext)) {
     // Türkçe dil desteğiyle OCR işlemi
     const { data: { text: ocrText } } = await Tesseract.recognize(
