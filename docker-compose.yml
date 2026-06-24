@@ -24,7 +24,7 @@ services:
       - .env
     environment:
       - PORT=3001
-      - DATABASE_URL=postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi}
       - YARGI_MCP_URL=http://yargi-mcp:8000
       - LEGAL_CORPUS_ENABLED=true
       - LEGAL_CORPUS_SEMANTIC_ENABLED=false
@@ -40,7 +40,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi}
       - EMBEDDING_BASE_URL=http://embedding:80
       - EMBEDDING_ENABLED=false
       - BEDESTEN_PHRASE=karar
