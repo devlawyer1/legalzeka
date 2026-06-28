@@ -30,6 +30,7 @@ const emsalRoutes = require('./emsal.routes');
 const yargiRoutes = require('./yargi.routes');
 const legalWorkflowRoutes = require('./legalWorkflows');
 const workdeskRoutes = require('./workdesk');
+const legalSearchV1Routes = require('./legalSearchV1');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // Route'ları bağla
@@ -57,5 +58,6 @@ router.use('/emsal', emsalRoutes);
 router.use('/yargi', yargiRoutes);
 router.use('/legal-workflows', legalWorkflowRoutes);
 router.use('/workdesk', workdeskRoutes);
+router.use('/v1', legalSearchV1Routes);
 
 module.exports = router;
