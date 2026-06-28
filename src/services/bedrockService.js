@@ -37,6 +37,7 @@ async function invokeBedrockClaude(userMessage, options = {}) {
     maxTokens = 4096,
     temperature = 0.7,
     conversationHistory = [],
+    toolsEnabled = true,
   } = options;
 
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
@@ -44,10 +45,12 @@ async function invokeBedrockClaude(userMessage, options = {}) {
   }
 
   // Ensure MCP is connected
-  try {
-    await mcpAgentService.connect();
-  } catch (err) {
-    console.warn("MCP Server connection failed, proceeding without tools.", err.message);
+  if (toolsEnabled) {
+    try {
+      await mcpAgentService.connect();
+    } catch (err) {
+      console.warn("MCP Server connection failed, proceeding without tools.", err.message);
+    }
   }
 
   // Build the conversation history
@@ -85,8 +88,8 @@ async function invokeBedrockClaude(userMessage, options = {}) {
     };
 
     // Attach tools if MCP is connected
-    const bedrockToolConfig = mcpAgentService.getBedrockToolConfig();
-    if (mcpAgentService.isConnected && bedrockToolConfig.tools.length > 0) {
+    const bedrockToolConfig = toolsEnabled ? mcpAgentService.getBedrockToolConfig() : { tools: [] };
+    if (toolsEnabled && mcpAgentService.isConnected && bedrockToolConfig.tools.length > 0) {
       commandPayload.toolConfig = bedrockToolConfig;
     }
 

@@ -1,6 +1,8 @@
 const Case = require('../models/Case');
 const CaseDocument = require('../models/CaseDocument');
 const CaseTimelineService = require('../services/caseTimelineService');
+const AuditLogService = require('../services/AuditLogService');
+const { canUseOrganization, getAccessContext } = require('../services/accessContext');
 const { pool } = require('../config/db');
 
 function asArray(value) {
@@ -11,82 +13,120 @@ function collectFromAnalyses(analyses, key) {
   return analyses.flatMap((analysis) => asArray(analysis.extracted_data?.[key]));
 }
 
-/**
- * Yeni dava dosyası oluşturur
- * POST /api/cases
- */
+function presentCase(caseData) {
+  if (!caseData) return caseData;
+  return {
+    ...caseData,
+    scopeType: caseData.scope_type,
+    ownerUserId: caseData.owner_user_id,
+    lawFirmId: caseData.law_firm_id,
+  };
+}
+
+function normalizeScope(value) {
+  return value ? String(value).trim().toUpperCase() : null;
+}
+
 exports.createCase = async (req, res, next) => {
   try {
-    const { esasNo, mahkeme, konu, tarafDavaci, tarafDavali, durum, atananAvukatId, notlar } = req.body;
-    const firmId = req.user.firmId; // firmAuth middleware sets this
+    const {
+      esasNo,
+      mahkeme,
+      konu,
+      tarafDavaci,
+      tarafDavali,
+      durum,
+      atananAvukatId,
+      notlar,
+    } = req.body;
+    const accessContext = await getAccessContext(req);
+    const lawFirmId = req.body.lawFirmId || req.body.firmId || null;
+    const scopeType = normalizeScope(req.body.scopeType) || (lawFirmId ? 'ORGANIZATION' : null);
 
-    if (!firmId) {
-      return res.status(403).json({ success: false, message: 'Büro yetkiniz bulunmuyor.' });
+    if (!['PERSONAL', 'ORGANIZATION'].includes(scopeType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'scopeType PERSONAL veya ORGANIZATION olmalıdır.',
+      });
+    }
+
+    if (scopeType === 'ORGANIZATION' && (!lawFirmId || !canUseOrganization(accessContext, lawFirmId, 'write'))) {
+      await AuditLogService.record({
+        req,
+        action: 'ACCESS_DENIED',
+        entityType: 'CASE',
+        lawFirmId,
+        success: false,
+        metadata: { operation: 'create', scopeType },
+      });
+      return res.status(403).json({ success: false, message: 'Bu büroda dosya oluşturma yetkiniz yok.' });
     }
 
     const newCase = await Case.create({
-      firmId, 
-      esasNo, 
-      mahkeme, 
-      konu, 
-      tarafDavaci, 
-      tarafDavali, 
-      durum, 
-      atananAvukatId, 
-      notlar
+      lawFirmId: scopeType === 'ORGANIZATION' ? lawFirmId : null,
+      scopeType,
+      ownerUserId: scopeType === 'PERSONAL' ? req.user.id : null,
+      esasNo,
+      mahkeme,
+      konu,
+      tarafDavaci,
+      tarafDavali,
+      durum,
+      atananAvukatId,
+      notlar,
     });
 
-    res.status(201).json({ success: true, data: newCase });
+    await AuditLogService.record({
+      req,
+      action: 'CASE_CREATED',
+      entityType: 'CASE',
+      entityId: newCase.id,
+      caseId: newCase.id,
+      lawFirmId: newCase.law_firm_id,
+      metadata: { scopeType: newCase.scope_type },
+    });
+    res.status(201).json({ success: true, data: presentCase(newCase) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Bürodaki tüm davaları getirir
- * GET /api/cases
- */
 exports.getCases = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    if (!firmId) return res.status(403).json({ success: false, message: 'Yetkisiz erişim.' });
-    
-    const cases = await Case.findByFirmId(firmId);
-    res.status(200).json({ success: true, data: cases });
+    const accessContext = await getAccessContext(req);
+    const scopeType = normalizeScope(req.query.scopeType);
+    if (scopeType && !['PERSONAL', 'ORGANIZATION'].includes(scopeType)) {
+      return res.status(400).json({ success: false, message: 'Geçersiz scopeType.' });
+    }
+
+    const cases = await Case.findAccessible(accessContext, {
+      scopeType,
+      lawFirmId: req.query.lawFirmId || req.query.firmId || null,
+    });
+    res.status(200).json({ success: true, data: cases.map(presentCase) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Tekil dava detayı
- * GET /api/cases/:id
- */
 exports.getCaseById = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const caseId = req.params.id;
-    if (!firmId) return res.status(403).json({ success: false, message: 'Yetkisiz erişim.' });
-
-    const caseData = await Case.findById(caseId, firmId);
-    if (!caseData) return res.status(404).json({ success: false, message: 'Dava bulunamadı.' });
-
-    res.status(200).json({ success: true, data: caseData });
+    await AuditLogService.record({
+      req,
+      action: 'CASE_VIEWED',
+      entityType: 'CASE',
+      entityId: req.matter.id,
+      caseId: req.matter.id,
+      lawFirmId: req.matter.law_firm_id,
+    });
+    res.status(200).json({ success: true, data: presentCase(req.matter) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Dava günceller
- * PUT /api/cases/:id
- */
 exports.updateCase = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const caseId = req.params.id;
-    
-    // Convert camelCase keys to snake_case equivalent expected by BD
     const payload = {};
     if (req.body.esasNo !== undefined) payload.esas_no = req.body.esasNo;
     if (req.body.mahkeme !== undefined) payload.mahkeme = req.body.mahkeme;
@@ -97,56 +137,56 @@ exports.updateCase = async (req, res, next) => {
     if (req.body.atananAvukatId !== undefined) payload.atanan_avukat_id = req.body.atananAvukatId;
     if (req.body.notlar !== undefined) payload.notlar = req.body.notlar;
 
-    const updated = await Case.update(caseId, firmId, payload);
+    const updated = await Case.updateAccessible(req.matter.id, req.accessContext, payload);
     if (!updated) return res.status(404).json({ success: false, message: 'Dava bulunamadı veya değiştirilemedi.' });
-    
-    res.status(200).json({ success: true, data: updated });
+
+    await AuditLogService.record({
+      req,
+      action: 'CASE_UPDATED',
+      entityType: 'CASE',
+      entityId: updated.id,
+      caseId: updated.id,
+      lawFirmId: updated.law_firm_id,
+      metadata: { fields: Object.keys(payload) },
+    });
+    res.status(200).json({ success: true, data: presentCase(updated) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Dava Siler (Soft delete)
- * DELETE /api/cases/:id
- */
 exports.deleteCase = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const caseId = req.params.id;
-    
-    const success = await Case.delete(caseId, firmId);
+    const success = await Case.deleteAccessible(req.matter.id, req.accessContext);
     if (!success) return res.status(404).json({ success: false, message: 'Dava bulunamadı.' });
-    
+
+    await AuditLogService.record({
+      req,
+      action: 'CASE_DELETED',
+      entityType: 'CASE',
+      entityId: req.matter.id,
+      caseId: req.matter.id,
+      lawFirmId: req.matter.law_firm_id,
+    });
     res.status(200).json({ success: true, message: 'Dava arşive kaldırıldı.' });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * AI Dosya Odası çalışma alanı
- * GET /api/cases/:caseId/workspace
- */
 exports.getCaseWorkspace = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const caseId = req.params.caseId;
-
-    if (!firmId) return res.status(403).json({ success: false, message: 'Yetkisiz erişim.' });
-
-    const caseData = await Case.findById(caseId, firmId);
-    if (!caseData) return res.status(404).json({ success: false, message: 'Dava bulunamadı.' });
-
-    const [documents, analysisResult, timelineResult] = await Promise.all([
-      CaseDocument.findByCaseId(caseId, firmId),
+    const caseData = req.matter;
+    const caseId = caseData.id;
+    const [documents, analysisResult, timelineResult, matterParties, matterEvents] = await Promise.all([
+      CaseDocument.findByCaseIdAccessible(caseId, req.accessContext),
       pool.query(
         `SELECT cda.*, cd.document_name
          FROM case_document_analyses cda
          JOIN case_documents cd ON cd.id = cda.document_id
-         WHERE cda.case_id = $1 AND cda.firm_id = $2
+         WHERE cda.case_id = $1 AND cd.deleted_at IS NULL
          ORDER BY cda.completed_at DESC NULLS LAST, cda.created_at DESC`,
-        [caseId, firmId]
+        [caseId]
       ),
       CaseTimelineService.buildTimeline(caseId).catch((error) => ({
         caseInfo: caseData,
@@ -154,6 +194,18 @@ exports.getCaseWorkspace = async (req, res, next) => {
         totalEvents: 0,
         error: error.message,
       })),
+      pool.query(
+        `SELECT mp.*, cd.original_filename
+         FROM matter_parties mp JOIN case_documents cd ON cd.id = mp.source_document_id
+         WHERE mp.case_id = $1 ORDER BY mp.verified_at DESC`,
+        [caseId]
+      ),
+      pool.query(
+        `SELECT me.*, cd.original_filename
+         FROM matter_events me JOIN case_documents cd ON cd.id = me.source_document_id
+         WHERE me.case_id = $1 ORDER BY me.event_date NULLS LAST, me.verified_at DESC`,
+        [caseId]
+      ),
     ]);
 
     const analyses = analysisResult.rows || [];
@@ -166,10 +218,18 @@ exports.getCaseWorkspace = async (req, res, next) => {
     const nextActions = collectFromAnalyses(analyses, 'nextActions');
     const analysisTimeline = collectFromAnalyses(analyses, 'timeline');
 
+    await AuditLogService.record({
+      req,
+      action: 'CASE_VIEWED',
+      entityType: 'CASE_WORKSPACE',
+      entityId: caseId,
+      caseId,
+      lawFirmId: caseData.law_firm_id,
+    });
     res.status(200).json({
       success: true,
       data: {
-        case: caseData,
+        case: presentCase(caseData),
         documents,
         analyses,
         parties: {
@@ -198,9 +258,20 @@ exports.getCaseWorkspace = async (req, res, next) => {
         contradictions,
         missingElements,
         nextActions,
+        matterTwin: {
+          parties: matterParties.rows,
+          events: matterEvents.rows,
+          metadata: {
+            caseNumber: caseData.esas_no,
+            court: caseData.mahkeme,
+            legalDomain: caseData.legal_domain,
+          },
+        },
       },
     });
   } catch (error) {
     next(error);
   }
 };
+
+module.exports.presentCase = presentCase;

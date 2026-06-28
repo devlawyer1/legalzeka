@@ -22,6 +22,33 @@ async function parsePdfBuffer(dataBuffer) {
   throw new Error('PDF parser desteklenmeyen bir API dondurdu.');
 }
 
+async function parsePdfBufferDetailed(dataBuffer) {
+  if (typeof pdfParseLib === 'function') {
+    const data = await pdfParseLib(dataBuffer);
+    return { text: data.text || '', pageCount: Number(data.numpages || data.total || 0) || null };
+  }
+
+  if (typeof pdfParseLib.PDFParse === 'function') {
+    const parser = new pdfParseLib.PDFParse({ data: dataBuffer });
+    try {
+      const data = await parser.getText();
+      return {
+        text: data.text || '',
+        pageCount: Number(data.total || data.pages?.length || 0) || null,
+      };
+    } finally {
+      await parser.destroy();
+    }
+  }
+
+  throw new Error('PDF parser desteklenmeyen bir API dondurdu.');
+}
+
+function parseTextBuffer(dataBuffer) {
+  if (dataBuffer.includes(0)) throw new Error('TXT dosyasi ikili veri iceriyor.');
+  return new TextDecoder('utf-8', { fatal: true }).decode(dataBuffer);
+}
+
 /**
  * Verilen dosyanın türüne göre metnini çıkarır ve ardından dosyayı siler.
  * @param {string} filePath - İşlenecek dosyanın yolu
@@ -62,4 +89,4 @@ async function parseAndCleanup(filePath) {
   }
 }
 
-module.exports = { parseAndCleanup, parseFileText };
+module.exports = { parseAndCleanup, parseFileText, parsePdfBufferDetailed, parseTextBuffer };

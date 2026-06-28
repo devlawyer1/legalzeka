@@ -34,7 +34,7 @@ class CaseTimelineService {
     // 2. Dava dokümanları
     try {
       const docsRes = await pool.query(
-        `SELECT * FROM case_documents WHERE case_id = $1 ORDER BY created_at ASC`,
+        `SELECT * FROM case_documents WHERE case_id = $1 AND deleted_at IS NULL ORDER BY created_at ASC`,
         [caseId]
       );
       for (const doc of docsRes.rows) {
@@ -84,9 +84,18 @@ class CaseTimelineService {
     try {
       const notifsRes = await pool.query(
         `SELECT * FROM uyap_notifications
-         WHERE case_id = $1 OR case_ref ILIKE $2 OR content ILIKE $2 OR title ILIKE $2
+         WHERE case_id = $1
+            OR (
+              $3::uuid IS NOT NULL
+              AND firm_id = $3
+              AND (case_ref ILIKE $2 OR content ILIKE $2 OR title ILIKE $2)
+            )
          ORDER BY created_at ASC`,
-        [caseId, `%${caseData.esas_no || 'NOMATCH'}%`]
+        [
+          caseId,
+          `%${caseData.esas_no || 'NOMATCH'}%`,
+          caseData.scope_type === 'ORGANIZATION' ? caseData.law_firm_id : null,
+        ]
       );
       for (const n of notifsRes.rows) {
         events.push({

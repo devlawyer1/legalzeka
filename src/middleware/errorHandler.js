@@ -18,18 +18,20 @@ function notFound(req, res, next) {
  * Tüm yakalanmamış hataları merkezi olarak yönetir.
  */
 function errorHandler(err, req, res, next) {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  const statusCode = Number(err.status || err.statusCode) || (res.statusCode === 200 ? 500 : res.statusCode);
 
   console.error('❌ Hata:', {
     message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    stack: process.env.NODE_ENV !== 'test' ? err.stack : undefined,
+    requestId: req.requestId || req.get?.('x-request-id') || undefined,
     url: req.originalUrl,
     method: req.method,
   });
 
   res.status(statusCode).json({
     success: false,
-    message: err.message,
+    message: statusCode >= 500 ? 'Beklenmeyen bir sunucu hatasi olustu.' : err.message,
+    ...(err.code && { code: err.code }),
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 }

@@ -3,8 +3,8 @@
 // Büro bazlı yetkilendirme
 // ============================================================
 
-const FirmUser = require('../models/FirmUser');
 const { pool } = require('../config/db');
+const { getAccessContext, membershipFor } = require('../services/accessContext');
 
 /**
  * Kullanıcının bir büro'ya üye olup olmadığını ve yetkisini kontrol eder.
@@ -56,7 +56,9 @@ async function firmMember(req, res, next) {
       });
     }
 
-    const firmRole = await FirmUser.getUserFirmRole(firmId, req.user.id);
+    const accessContext = await getAccessContext(req);
+    const membership = membershipFor(accessContext, firmId);
+    const firmRole = membership?.role || null;
 
     if (!firmRole) {
       return res.status(403).json({

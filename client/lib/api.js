@@ -725,6 +725,71 @@ export async function analyzeCaseDocument(caseId, documentId) {
   });
 }
 
+export async function getCaseDocumentStatus(caseId, documentId) {
+  return request(`/cases/${caseId}/documents/${documentId}/status`);
+}
+
+export async function getDocumentSuggestions(caseId, documentId) {
+  return request(`/cases/${caseId}/documents/${documentId}/suggestions`);
+}
+
+export async function acceptMatterSuggestion(caseId, suggestionId) {
+  return request(`/cases/${caseId}/suggestions/${suggestionId}/accept`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function rejectMatterSuggestion(caseId, suggestionId, reason = "") {
+  return request(`/cases/${caseId}/suggestions/${suggestionId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function bulkReviewMatterSuggestions(caseId, { accept = [], reject = [] }) {
+  return request(`/cases/${caseId}/suggestions/bulk-review`, {
+    method: "POST",
+    body: JSON.stringify({ accept, reject }),
+  });
+}
+
+export async function retryCaseDocument(caseId, documentId) {
+  return request(`/cases/${caseId}/documents/${documentId}/retry`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function deleteCaseDocument(caseId, documentId) {
+  return request(`/cases/${caseId}/documents/${documentId}`, { method: "DELETE" });
+}
+
+export async function downloadCaseDocument(caseId, documentId, filename = "belge") {
+  const headers = {};
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("accessToken");
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+  const response = await fetch(`${API_BASE}/cases/${caseId}/documents/${documentId}/download`, { headers });
+  if (!response.ok) {
+    let message = "Belge indirilemedi.";
+    try { message = (await response.json()).message || message; } catch (_) {}
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 // ==========================================
 // Law Versioning (Time-Travel)
 // ==========================================

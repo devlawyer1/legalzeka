@@ -54,7 +54,7 @@ const SYSTEM_PROMPT = `Sen "Legal Zeka" adlı Türk hukuk platformunun yapay zek
 /**
  * OpenAI API ile chat completion
  */
-async function callOpenAI(messages) {
+async function callOpenAI(messages, { temperature = 0.7, maxTokens = 4096 } = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY tanımlanmamış. Lütfen .env dosyasına ekleyin.');
 
@@ -67,8 +67,8 @@ async function callOpenAI(messages) {
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || 'gpt-4o',
       messages,
-      temperature: 0.7,
-      max_tokens: 4096,
+      temperature,
+      max_tokens: maxTokens,
     })
   });
 
@@ -84,7 +84,7 @@ async function callOpenAI(messages) {
 /**
  * Anthropic Claude API ile chat completion
  */
-async function callClaude(messages) {
+async function callClaude(messages, { temperature = 0.7, maxTokens = 4096 } = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY tanımlanmamış. Lütfen .env dosyasına ekleyin.');
 
@@ -100,7 +100,8 @@ async function callClaude(messages) {
     },
     body: JSON.stringify({
       model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
+      max_tokens: maxTokens,
+      temperature,
       system: systemMsg?.content || '',
       messages: chatMessages,
     })
@@ -119,7 +120,7 @@ async function callClaude(messages) {
  * Ollama API ile local model çağrısı (emsal_atlasi)
  * Ollama generate endpoint'i kullanır.
  */
-async function callOllama(messages) {
+async function callOllama(messages, { temperature = 0.7, maxTokens = 1024 } = {}) {
   const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
   const modelName = process.env.OLLAMA_MODEL || 'emsal_atlasi';
 
@@ -132,8 +133,8 @@ async function callOllama(messages) {
       messages: messages,
       stream: false,
       options: {
-        temperature: 0.7,
-        num_predict: 1024,
+        temperature,
+        num_predict: maxTokens,
         top_p: 0.9,
       }
     })
@@ -218,6 +219,59 @@ async function chat(conversationHistory, userMessage, customSystemPrompt = null)
   }
 }
 
+function estimateTokens(value) {
+  return Math.max(1, Math.ceil(String(value || '').length / 4));
+}
+
+function configuredModel(provider) {
+  if (provider === 'openai') return process.env.OPENAI_MODEL || 'gpt-4o';
+  if (provider === 'claude') return process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+  if (provider === 'gemini') return process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  if (provider === 'bedrock') return process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0';
+  return process.env.OLLAMA_MODEL || 'emsal_atlasi';
+}
+
+async function chatWithUsage({ systemPrompt, userMessage, maxTokens = 4096, temperature = 0 }) {
+  const provider = (process.env.LLM_PROVIDER || 'ollama').toLowerCase();
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userMessage },
+  ];
+  let text;
+  if (provider === 'openai') text = await callOpenAI(messages, { temperature, maxTokens });
+  else if (provider === 'claude') text = await callClaude(messages, { temperature, maxTokens });
+  else if (provider === 'gemini') {
+    text = await invokeGemini(userMessage, {
+      systemPrompt,
+      conversationHistory: [],
+      temperature,
+      maxTokens,
+      toolsEnabled: false,
+    });
+  } else if (provider === 'bedrock') {
+    text = await invokeBedrockClaude(userMessage, {
+      systemPrompt,
+      conversationHistory: [],
+      temperature,
+      maxTokens,
+      toolsEnabled: false,
+    });
+  } else text = await callOllama(messages, { temperature, maxTokens });
+
+  const inputTokens = estimateTokens(`${systemPrompt}\n${userMessage}`);
+  const outputTokens = estimateTokens(text);
+  const inputRate = Number(process.env.EXTRACTION_INPUT_COST_PER_MILLION || 0);
+  const outputRate = Number(process.env.EXTRACTION_OUTPUT_COST_PER_MILLION || 0);
+  return {
+    text,
+    provider,
+    model: configuredModel(provider),
+    inputTokens,
+    outputTokens,
+    estimatedCost: (inputTokens * inputRate + outputTokens * outputRate) / 1000000,
+  };
+}
+
 /**
  * Yapay Zeka ile Dilekçe Üretir
  */
@@ -299,4 +353,4 @@ ${petition2Content}
   }
 }
 
-module.exports = { chat, callOllamaStream, SYSTEM_PROMPT, generatePetition, comparePetitions };
+module.exports = { chat, chatWithUsage, callOllamaStream, SYSTEM_PROMPT, generatePetition, comparePetitions };

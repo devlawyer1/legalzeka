@@ -6,17 +6,32 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
+  Check,
+  Download,
   FileText,
   FolderOpen,
   GitBranch,
   ListChecks,
   Map as MapIcon,
   RefreshCw,
+  RotateCcw,
   Scale,
   Sparkles,
+  Trash2,
   Upload,
+  X,
 } from "lucide-react";
-import { analyzeCaseDocument, getCaseWorkspace, uploadCaseDocument } from "@/lib/api";
+import {
+  acceptMatterSuggestion,
+  bulkReviewMatterSuggestions,
+  deleteCaseDocument,
+  downloadCaseDocument,
+  getDocumentSuggestions,
+  getCaseWorkspace,
+  rejectMatterSuggestion,
+  retryCaseDocument,
+  uploadCaseDocument,
+} from "@/lib/api";
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -35,13 +50,15 @@ function formatDate(value, withTime = false) {
 }
 
 function statusStyle(status) {
-  switch (status) {
-    case "completed":
+  switch (String(status || "").toUpperCase()) {
+    case "COMPLETED":
       return { color: "#166534", background: "#DCFCE7" };
-    case "failed":
+    case "FAILED":
       return { color: "#991B1B", background: "#FEE2E2" };
-    case "processing":
+    case "PROCESSING":
       return { color: "#92400E", background: "#FEF3C7" };
+    case "CANCELLED":
+      return { color: "#475569", background: "#E2E8F0" };
     default:
       return { color: "#1D4ED8", background: "#DBEAFE" };
   }
@@ -86,7 +103,7 @@ function ListBlock({ items, empty, tone = "neutral" }) {
   );
 }
 
-export default function CaseWorkspace({ firmId, caseId, onBack }) {
+export default function CaseWorkspace({ caseId, onBack }) {
   const [workspace, setWorkspace] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
@@ -97,11 +114,15 @@ export default function CaseWorkspace({ firmId, caseId, onBack }) {
   const [documentType, setDocumentType] = useState("Dava Dilekçesi");
   const [description, setDescription] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [analyzingId, setAnalyzingId] = useState(null);
+  const [actionId, setActionId] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState([]);
 
   const caseData = workspace?.case || {};
   const documents = asArray(workspace?.documents);
   const analyses = asArray(workspace?.analyses);
+  const matterTwin = workspace?.matterTwin || { parties: [], events: [], metadata: {} };
+  const pendingSuggestions = suggestions.filter((item) => item.status === "PENDING");
   const warnings = analyses.flatMap((analysis) =>
     asArray(analysis.warnings).map((warning) => ({
       ...warning,
@@ -123,23 +144,42 @@ export default function CaseWorkspace({ firmId, caseId, onBack }) {
     setTimeout(() => setToast({ type: "", text: "" }), 3500);
   };
 
-  const loadWorkspace = async () => {
+  const loadWorkspace = async ({ silent = false } = {}) => {
     if (!caseId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError("");
     try {
       const res = await getCaseWorkspace(caseId);
       setWorkspace(res.data);
+      const suggestionResults = await Promise.allSettled(
+        asArray(res.data?.documents).map(async (doc) => {
+          const response = await getDocumentSuggestions(caseId, doc.id);
+          return asArray(response.data).map((item) => ({ ...item, document: doc }));
+        })
+      );
+      setSuggestions(suggestionResults.flatMap((result) => result.status === "fulfilled" ? result.value : []));
     } catch (err) {
       setError(err.message || "Dosya Odası yüklenemedi.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadWorkspace();
   }, [caseId]);
+
+  useEffect(() => {
+    const hasActiveDocument = documents.some((doc) =>
+      ["QUEUED", "PROCESSING"].includes(String(doc.processing_status || "").toUpperCase())
+      || ["QUEUED", "RUNNING", "RETRYING"].includes(String(doc.latest_job_status || "").toUpperCase())
+    );
+    if (!hasActiveDocument) return undefined;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") loadWorkspace({ silent: true });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [caseId, documents]);
 
   const handleUpload = async (event) => {
     event.preventDefault();
@@ -158,7 +198,7 @@ export default function CaseWorkspace({ firmId, caseId, onBack }) {
       setSelectedFile(null);
       setDescription("");
       setFileInputKey((value) => value + 1);
-      showToast("success", "Belge dosyaya eklendi.");
+      showToast("success", "Belge yüklendi ve işleme kuyruğuna alındı.");
       await loadWorkspace();
     } catch (err) {
       showToast("error", err.message || "Belge yüklenemedi.");
@@ -167,22 +207,79 @@ export default function CaseWorkspace({ firmId, caseId, onBack }) {
     }
   };
 
-  const handleAnalyze = async (documentId) => {
-    setAnalyzingId(documentId);
+  const handleRetry = async (documentId) => {
+    setActionId(documentId);
     try {
-      const res = await analyzeCaseDocument(caseId, documentId);
-      const automation = res.data?.workflowAutomations;
-      const count = (automation?.deadlines?.length || 0) + (automation?.tasks?.length || 0);
-      showToast(
-        "success",
-        count ? `Analiz tamamlandı; ${count} iş akışı çıktısı avukat onayına açıldı.` : "Analiz tamamlandı."
-      );
+      await retryCaseDocument(caseId, documentId);
+      showToast("success", "Belge yeniden işleme kuyruğuna alındı.");
       await loadWorkspace();
     } catch (err) {
-      showToast("error", err.message || "Belge analizi tamamlanamadı.");
+      showToast("error", err.message || "Belge yeniden kuyruğa alınamadı.");
     } finally {
-      setAnalyzingId(null);
+      setActionId(null);
     }
+  };
+
+  const handleDownload = async (doc) => {
+    setActionId(doc.id);
+    try {
+      await downloadCaseDocument(caseId, doc.id, doc.original_filename || doc.document_name || "belge");
+    } catch (err) {
+      showToast("error", err.message || "Belge indirilemedi.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleDelete = async (doc) => {
+    if (!window.confirm("Bu belgeyi dosyadan kaldırmak istiyor musunuz?")) return;
+    setActionId(doc.id);
+    try {
+      await deleteCaseDocument(caseId, doc.id);
+      showToast("success", "Belge silme kuyruğuna alındı.");
+      await loadWorkspace();
+    } catch (err) {
+      showToast("error", err.message || "Belge silinemedi.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleSuggestionReview = async (suggestion, action) => {
+    setActionId(suggestion.id);
+    try {
+      if (action === "accept") await acceptMatterSuggestion(caseId, suggestion.id);
+      else await rejectMatterSuggestion(caseId, suggestion.id);
+      showToast("success", action === "accept" ? "Öneri Matter Twin'e eklendi." : "Öneri reddedildi.");
+      setSelectedSuggestionIds((items) => items.filter((id) => id !== suggestion.id));
+      await loadWorkspace({ silent: true });
+    } catch (err) {
+      showToast("error", err.message || "Öneri incelenemedi.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleBulkReview = async (action) => {
+    if (!selectedSuggestionIds.length) return;
+    setActionId("bulk");
+    try {
+      await bulkReviewMatterSuggestions(caseId, {
+        accept: action === "accept" ? selectedSuggestionIds : [],
+        reject: action === "reject" ? selectedSuggestionIds.map((id) => ({ id })) : [],
+      });
+      showToast("success", `${selectedSuggestionIds.length} öneri incelendi.`);
+      setSelectedSuggestionIds([]);
+      await loadWorkspace({ silent: true });
+    } catch (err) {
+      showToast("error", err.message || "Toplu inceleme tamamlanamadı.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const toggleSuggestion = (id) => {
+    setSelectedSuggestionIds((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]);
   };
 
   const tabs = [
@@ -194,7 +291,7 @@ export default function CaseWorkspace({ firmId, caseId, onBack }) {
     { id: "risks", label: "Riskler", icon: <AlertTriangle size={15} /> },
   ];
 
-  if (!firmId || !caseId) {
+  if (!caseId) {
     return (
       <div style={styles.emptyState}>
         <FolderOpen size={42} />
@@ -305,6 +402,24 @@ export default function CaseWorkspace({ firmId, caseId, onBack }) {
           <Section title="Sonraki Aksiyonlar" icon={<CheckCircle2 size={17} />}>
             <ListBlock items={asArray(workspace?.nextActions).slice(0, 8)} empty="Aksiyon önerisi oluşmadı." />
           </Section>
+
+          <Section title="Doğrulanmış Taraflar" icon={<Scale size={17} />}>
+            <ListBlock
+              items={asArray(matterTwin.parties).map((party) =>
+                `${party.name} · ${party.role} · ${party.original_filename}, s. ${party.source_page}`
+              )}
+              empty="Henüz kabul edilmiş taraf önerisi yok."
+            />
+          </Section>
+
+          <Section title="Doğrulanmış Olaylar" icon={<CalendarDays size={17} />}>
+            <ListBlock
+              items={asArray(matterTwin.events).map((event) =>
+                `${event.title}${event.event_date ? ` · ${formatDate(event.event_date)}` : ""} · ${event.original_filename}, s. ${event.source_page}`
+              )}
+              empty="Henüz kabul edilmiş olay veya tarih önerisi yok."
+            />
+          </Section>
         </div>
       )}
 
@@ -354,21 +469,121 @@ export default function CaseWorkspace({ firmId, caseId, onBack }) {
                     <div style={styles.documentMain}>
                       <strong>{doc.document_name || doc.file_name || "Belge"}</strong>
                       <span>{doc.document_type || "Genel"} · {formatDate(doc.uploaded_at || doc.created_at, true)}</span>
+                      <span>
+                        {doc.detected_mime_type || "Tür bilinmiyor"}
+                        {doc.file_size_bytes ? ` · ${(Number(doc.file_size_bytes) / 1024).toFixed(1)} KB` : ""}
+                      </span>
+                      {doc.processing_error_message && <p style={styles.documentError}>{doc.processing_error_message}</p>}
+                      {doc.min_ocr_confidence !== null && Number(doc.min_ocr_confidence) < 0.65 && (
+                        <p style={styles.documentWarning}>
+                          OCR güveni düşük: %{Math.round(Number(doc.min_ocr_confidence) * 100)}. Kaynak sayfayı kontrol edin.
+                        </p>
+                      )}
                       {doc.analysis_summary && <p>{doc.analysis_summary}</p>}
                     </div>
                     <div style={styles.documentActions}>
-                      <span style={{ ...styles.statusPill, ...statusStyle(doc.analysis_status) }}>
-                        {doc.analysis_status || "pending"}
+                      <span style={{ ...styles.statusPill, ...statusStyle(doc.processing_status) }}>
+                        {doc.processing_status || "QUEUED"}
                       </span>
+                      {String(doc.processing_status || "").toUpperCase() === "FAILED" && (
+                        <button
+                          style={styles.iconButton}
+                          disabled={actionId === doc.id}
+                          onClick={() => handleRetry(doc.id)}
+                          title="Yeniden dene"
+                        >
+                          <RotateCcw size={16} />
+                        </button>
+                      )}
                       <button
-                        style={styles.secondaryButton}
-                        disabled={analyzingId === doc.id}
-                        onClick={() => handleAnalyze(doc.id)}
+                        style={styles.iconButton}
+                        disabled={actionId === doc.id}
+                        onClick={() => handleDownload(doc)}
+                        title="Belgeyi indir"
                       >
-                        <Sparkles size={15} />
-                        {analyzingId === doc.id ? "Analiz" : "Analiz Et"}
+                        <Download size={16} />
+                      </button>
+                      <button
+                        style={styles.iconButton}
+                        disabled={actionId === doc.id}
+                        onClick={() => handleDelete(doc)}
+                        title="Belgeyi sil"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section
+            title="Matter Twin Önerileri"
+            icon={<Sparkles size={17} />}
+            action={pendingSuggestions.length > 0 ? (
+              <div style={styles.documentActions}>
+                <button
+                  style={styles.secondaryButton}
+                  disabled={!selectedSuggestionIds.length || actionId === "bulk"}
+                  onClick={() => handleBulkReview("accept")}
+                >
+                  <Check size={15} /> Toplu kabul
+                </button>
+                <button
+                  style={styles.secondaryButton}
+                  disabled={!selectedSuggestionIds.length || actionId === "bulk"}
+                  onClick={() => handleBulkReview("reject")}
+                >
+                  <X size={15} /> Toplu reddet
+                </button>
+              </div>
+            ) : null}
+          >
+            {suggestions.length === 0 ? (
+              <EmptyLine text="Belge çıkarımı tamamlandığında doğrulanabilir öneriler burada görünür." />
+            ) : (
+              <div style={styles.suggestionList}>
+                {suggestions.map((suggestion) => (
+                  <div key={suggestion.id} style={styles.suggestionRow}>
+                    {suggestion.status === "PENDING" && (
+                      <input
+                        type="checkbox"
+                        checked={selectedSuggestionIds.includes(suggestion.id)}
+                        onChange={() => toggleSuggestion(suggestion.id)}
+                        aria-label={`${suggestion.display_value} önerisini seç`}
+                      />
+                    )}
+                    <div style={styles.suggestionMain}>
+                      <div style={styles.suggestionHeading}>
+                        <span style={{ ...styles.statusPill, ...statusStyle(suggestion.status === "PENDING" ? "PROCESSING" : suggestion.status === "ACCEPTED" ? "COMPLETED" : "FAILED") }}>
+                          {suggestion.suggestion_type}
+                        </span>
+                        <strong>{suggestion.display_value}</strong>
+                        <span style={styles.mutedText}>%{Math.round(Number(suggestion.confidence) * 100)} güven</span>
+                      </div>
+                      <button
+                        style={styles.sourceQuote}
+                        onClick={() => handleDownload(suggestion.document)}
+                        title="Kaynak belgeyi indir"
+                      >
+                        {suggestion.original_filename} · Sayfa {suggestion.source_page}: “{suggestion.source_quote}”
+                      </button>
+                    </div>
+                    {suggestion.status === "PENDING" ? (
+                      <div style={styles.documentActions}>
+                        <button style={styles.iconButton} disabled={actionId === suggestion.id} onClick={() => handleSuggestionReview(suggestion, "accept")} title="Öneriyi kabul et">
+                          <Check size={16} />
+                        </button>
+                        <button style={styles.iconButton} disabled={actionId === suggestion.id} onClick={() => handleSuggestionReview(suggestion, "reject")} title="Öneriyi reddet">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ ...styles.statusPill, ...statusStyle(suggestion.status === "ACCEPTED" ? "COMPLETED" : "FAILED") }}>
+                        {suggestion.status}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -659,6 +874,53 @@ const styles = {
     gap: 8,
     flexWrap: "wrap",
     justifyContent: "flex-end",
+  },
+  documentError: {
+    color: "#991B1B",
+    fontSize: 12,
+    margin: 0,
+  },
+  documentWarning: {
+    color: "#92400E",
+    background: "#FEF3C7",
+    fontSize: 12,
+    margin: 0,
+    padding: "6px 8px",
+    borderRadius: 6,
+  },
+  suggestionList: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  suggestionRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 14,
+    borderBottom: "1px solid var(--color-border-subtle)",
+  },
+  suggestionMain: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 7,
+    minWidth: 0,
+    flex: 1,
+  },
+  suggestionHeading: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  sourceQuote: {
+    border: "none",
+    background: "transparent",
+    color: "var(--color-text-secondary)",
+    padding: 0,
+    textAlign: "left",
+    fontSize: 12,
+    lineHeight: 1.5,
+    cursor: "pointer",
   },
   statusPill: {
     fontSize: 11,

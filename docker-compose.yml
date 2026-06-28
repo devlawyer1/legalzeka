@@ -12,6 +12,40 @@ services:
     volumes:
       - emsal_postgres_data_v2:/var/lib/postgresql/data
 
+  postgres-test:
+    image: pgvector/pgvector:pg16
+    profiles:
+      - test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: legalzeka_test
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d legalzeka_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  backend-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    profiles:
+      - test
+    environment:
+      - NODE_ENV=test
+      - TEST_DATABASE_URL=postgresql://postgres:postgrespassword@postgres-test:5432/legalzeka_test
+      - DATABASE_URL=postgresql://postgres:postgrespassword@postgres-test:5432/legalzeka_test
+      - JWT_SECRET=phase1a-container-test-secret
+      - LOCAL_UPLOAD_DIR=/app/uploads
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
   backend:
     build:
       context: .
@@ -25,12 +59,44 @@ services:
     environment:
       - PORT=3001
       - DATABASE_URL=${DOCKER_DATABASE_URL:-postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi}
+      - LOCAL_UPLOAD_DIR=/app/uploads
       - YARGI_MCP_URL=http://yargi-mcp:8000
       - LEGAL_CORPUS_ENABLED=true
       - LEGAL_CORPUS_SEMANTIC_ENABLED=false
       - LEGAL_CORPUS_EMBEDDING_URL=http://embedding:80
     ports:
       - "3001:3001"
+    volumes:
+      - legal_document_uploads:/app/uploads
+
+  document-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["node", "src/workers/documentWorker.js"]
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi}
+      - LOCAL_UPLOAD_DIR=/app/uploads
+      - DOCUMENT_WORKER_CONCURRENCY=${DOCUMENT_WORKER_CONCURRENCY:-2}
+      - DOCUMENT_JOB_MAX_ATTEMPTS=${DOCUMENT_JOB_MAX_ATTEMPTS:-3}
+      - DOCUMENT_JOB_TIMEOUT_MS=${DOCUMENT_JOB_TIMEOUT_MS:-120000}
+      - DOCUMENT_JOB_STALE_AFTER_MS=${DOCUMENT_JOB_STALE_AFTER_MS:-300000}
+      - DOCUMENT_JOB_POLL_INTERVAL_MS=${DOCUMENT_JOB_POLL_INTERVAL_MS:-1000}
+      - FILE_SCANNER_PROVIDER=${FILE_SCANNER_PROVIDER:-noop}
+      - FILE_SCANNER_REQUIRED=${FILE_SCANNER_REQUIRED:-false}
+    volumes:
+      - legal_document_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   legal-data-worker:
     build:
@@ -87,3 +153,4 @@ services:
 volumes:
 
   emsal_postgres_data_v2:
+  legal_document_uploads:

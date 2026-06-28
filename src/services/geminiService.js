@@ -18,6 +18,7 @@ async function invokeGemini(userMessage, options = {}) {
     maxTokens = 4096,
     temperature = 0.7,
     conversationHistory = [],
+    toolsEnabled = true,
   } = options;
 
   if (!process.env.GEMINI_API_KEY) {
@@ -25,10 +26,12 @@ async function invokeGemini(userMessage, options = {}) {
   }
 
   // Ensure MCP is connected
-  try {
-    await mcpAgentService.connect();
-  } catch (err) {
-    console.warn("MCP Server connection failed, proceeding without tools.", err.message);
+  if (toolsEnabled) {
+    try {
+      await mcpAgentService.connect();
+    } catch (err) {
+      console.warn("MCP Server connection failed, proceeding without tools.", err.message);
+    }
   }
 
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -37,8 +40,8 @@ async function invokeGemini(userMessage, options = {}) {
   
   // Prepare tools
   let tools = [];
-  const geminiToolConfig = mcpAgentService.getGeminiToolConfig();
-  if (mcpAgentService.isConnected && geminiToolConfig && geminiToolConfig.length > 0) {
+  const geminiToolConfig = toolsEnabled ? mcpAgentService.getGeminiToolConfig() : [];
+  if (toolsEnabled && mcpAgentService.isConnected && geminiToolConfig && geminiToolConfig.length > 0) {
     tools = geminiToolConfig;
   }
 

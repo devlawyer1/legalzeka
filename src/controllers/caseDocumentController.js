@@ -1,297 +1,224 @@
+const crypto = require('crypto');
+const { pool } = require('../config/db');
 const CaseDocument = require('../models/CaseDocument');
-const Case = require('../models/Case');
-const Task = require('../models/Task');
-const DeadlineService = require('../services/deadlineService');
-const { chat } = require('../services/llmService');
-const { parseFileText } = require('../utils/fileParser');
-const path = require('path');
+const AuditLogService = require('../services/AuditLogService');
+const jobs = require('../services/documentJobService');
+const { storage } = require('../services/storage');
+const { fileScanner } = require('../services/security');
+const { validateTemporaryUpload } = require('../services/security/fileValidationService');
 
-function compact(text, max = 9000) {
-  const value = String(text || '').replace(/\s+/g, ' ').trim();
-  return value.length > max ? `${value.slice(0, max - 3)}...` : value;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function safeDownloadName(value) {
+  return String(value || 'belge').replace(/[\r\n\\/"]/g, '_').trim().slice(0, 180) || 'belge';
 }
 
-function extractDates(text) {
-  const dateRegex = /\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}-\d{2}-\d{2})\b/g;
-  return [...new Set(String(text || '').match(dateRegex) || [])].slice(0, 30);
+function isUuid(value) {
+  return UUID_PATTERN.test(String(value || ''));
 }
 
-function extractLinesByKeywords(text, keywords, limit = 8) {
-  const lowerKeywords = keywords.map((keyword) => keyword.toLocaleLowerCase('tr-TR'));
-  return String(text || '')
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((line) => line.trim())
-    .filter((line) => {
-      const lower = line.toLocaleLowerCase('tr-TR');
-      return line.length > 25 && lowerKeywords.some((keyword) => lower.includes(keyword));
-    })
-    .slice(0, limit);
-}
-
-function buildFallbackAnalysis({ text, document, caseData }) {
-  const dates = extractDates(text);
-  const claims = extractLinesByKeywords(text, ['iddia', 'talep', 'dava', 'alacak', 'tazminat', 'fesih']);
-  const defenses = extractLinesByKeywords(text, ['savunma', 'itiraz', 'redd', 'zamanaşımı', 'yetki', 'usul']);
-  const evidenceLines = extractLinesByKeywords(text, ['delil', 'sözleşme', 'dekont', 'tanık', 'rapor', 'tutanak', 'whatsapp']);
-  const warnings = [];
-
-  if (!text || text.trim().length < 200) {
-    warnings.push({
-      code: 'LOW_TEXT_EXTRACTION',
-      label: 'Metin çıkarımı zayıf',
-      message: 'Belgeden sınırlı metin çıkarıldı; OCR veya orijinal dosya kalitesi kontrol edilmeli.',
-    });
-  }
-
-  if (claims.length === 0) {
-    warnings.push({
-      code: 'CLAIMS_NOT_DETECTED',
-      label: 'İddia/talep bulunamadı',
-      message: 'Belgede otomatik iddia veya talep cümlesi yakalanamadı; manuel kontrol önerilir.',
-    });
-  }
-
+function publicJob(job) {
+  if (!job) return null;
   return {
-    document: {
-      id: document.id,
-      name: document.document_name,
-      type: document.document_type || 'Genel',
-    },
-    parties: {
-      claimant: caseData?.taraf_davaci || null,
-      defendant: caseData?.taraf_davali || null,
-    },
-    claims,
-    defenses,
-    facts: extractLinesByKeywords(text, ['olay', 'tarihinde', 'gerçekleş', 'meydana', 'taraflar']),
-    timeline: dates.map((date) => ({
-      date,
-      event: 'Belgede geçen tarih',
-      sourceDocument: document.document_name,
-      legalImportance: 'Manuel önemlendirme bekliyor',
-    })),
-    evidenceMap: evidenceLines.map((line) => ({
-      evidence: line.slice(0, 160),
-      relatedFact: 'Belge metninden otomatik çıkarım',
-      legalElement: 'Manuel sınıflandırma bekliyor',
-    })),
-    contradictions: [],
-    missingElements: warnings.map((warning) => warning.message),
-    nextActions: [
-      'Belge analizini avukat kontrolünden geçir',
-      'Eksik delil ve süre risklerini dosya görevlerine dönüştür',
-    ],
-    summary: `${document.document_name} belgesinden ${dates.length} tarih, ${claims.length} iddia/talep, ${defenses.length} savunma/itiraz sinyali çıkarıldı.`,
-    warnings,
+    id: job.id,
+    type: job.job_type,
+    status: job.status,
+    attemptCount: job.attempt_count,
+    maxAttempts: job.max_attempts,
+    availableAt: job.available_at,
+    startedAt: job.started_at,
+    completedAt: job.completed_at,
+    failedAt: job.failed_at,
+    errorCode: job.error_code,
+    errorMessage: job.error_message,
   };
 }
 
-function extractJson(text) {
-  if (!text) return null;
-  const raw = String(text).trim();
-  const fenced = raw.match(/```json\s*([\s\S]*?)```/i) || raw.match(/```\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1] : raw;
-  const start = candidate.indexOf('{');
-  const end = candidate.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) return null;
-  try {
-    return JSON.parse(candidate.slice(start, end + 1));
-  } catch (_) {
-    return null;
-  }
+function publicDocument(document) {
+  return {
+    id: document.id,
+    caseId: document.case_id,
+    originalFilename: document.original_filename,
+    detectedMimeType: document.detected_mime_type,
+    fileExtension: document.file_extension,
+    fileSizeBytes: Number(document.file_size_bytes),
+    sha256Hash: document.sha256_hash,
+    processingStatus: document.processing_status,
+    pageCount: document.page_count,
+    textExtracted: document.text_extracted,
+    ocrRequired: document.ocr_required,
+  };
 }
 
-async function enrichWithAi({ text, fallback, caseData }) {
-  if (!text || text.trim().length < 200) return fallback;
-
-  const systemPrompt = `Sen Legal Zeka Dosya Odasi analiz motorusun.
-Yalnizca verilen belge metni ve dava bilgisine dayan.
-Kesin karar, kazanma ihtimali veya nihai hukuki sonuc uretme.
-Cevabi yalnizca gecerli JSON olarak ver.`;
-
-  const userPrompt = `Dava bilgisi:
-Mahkeme: ${caseData?.mahkeme || 'Belirtilmemis'}
-Esas No: ${caseData?.esas_no || 'Belirtilmemis'}
-Konu: ${caseData?.konu || 'Belirtilmemis'}
-Davaci: ${caseData?.taraf_davaci || 'Belirtilmemis'}
-Davali: ${caseData?.taraf_davali || 'Belirtilmemis'}
-
-Belge metni:
-${compact(text)}
-
-Su JSON semasina uy:
-{
-  "parties": {"claimant": string|null, "defendant": string|null, "attorneys": string[]},
-  "claims": string[],
-  "defenses": string[],
-  "facts": string[],
-  "timeline": [{"date": string, "event": string, "sourceDocument": string, "legalImportance": string}],
-  "evidenceMap": [{"evidence": string, "relatedFact": string, "legalElement": string}],
-  "contradictions": string[],
-  "missingElements": string[],
-  "nextActions": string[],
-  "summary": string,
-  "warnings": [{"code": string, "label": string, "message": string}]
-}`;
-
-  try {
-    const aiText = await chat([], userPrompt, systemPrompt);
-    const parsed = extractJson(aiText);
-    if (!parsed) return fallback;
-    return {
-      ...fallback,
-      ...parsed,
-      document: fallback.document,
-      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : fallback.warnings,
-    };
-  } catch (error) {
-    console.error('[CaseDocumentAnalysis] AI enrichment failed:', error.message);
-    return fallback;
-  }
+async function auditRejected(req, error) {
+  await AuditLogService.record({
+    req,
+    action: 'DOCUMENT_UPLOAD_REJECTED',
+    entityType: 'CASE_DOCUMENT',
+    caseId: req.params.caseId,
+    lawFirmId: req.matter?.law_firm_id,
+    success: false,
+    metadata: { code: error.code || 'UPLOAD_FAILED' },
+  });
 }
 
-async function createHumanReviewTasks({ firmId, caseId, userId, deadlines }) {
-  const tasks = [];
-
-  for (const deadline of deadlines || []) {
-    try {
-      const taskDueDate = new Date(deadline.deadline_date);
-      if (!Number.isNaN(taskDueDate.getTime())) {
-        taskDueDate.setDate(taskDueDate.getDate() - 3);
-        if (taskDueDate < new Date()) {
-          taskDueDate.setTime(new Date(deadline.deadline_date).getTime());
-        }
-      }
-
-      const task = await Task.create({
-        firmId,
-        caseId,
-        baslik: `${deadline.title} hazırlık kontrolü`,
-        aciklama: [
-          'Belge analizi süre riski tespit etti.',
-          'Süre ve hukuki işlem avukat onayından geçmeden nihai işleme dönüştürülmemelidir.',
-          deadline.description,
-        ].filter(Boolean).join('\n\n'),
-        atayanId: userId,
-        atananId: userId,
-        sonTarih: Number.isNaN(taskDueDate.getTime()) ? null : taskDueDate,
-        oncelik: deadline.priority === 'critical' ? 'Kritik' : 'Yüksek',
-        durum: 'Yapılacak',
-      });
-      tasks.push(task);
-    } catch (error) {
-      console.error('[CaseDocumentAnalysis] Workflow task failed:', error.message);
-    }
-  }
-
-  return tasks;
-}
-
-/**
- * Davaya Belge Yükle
- * POST /api/cases/:caseId/documents
- */
 exports.uploadDocument = async (req, res, next) => {
+  let storedKey = null;
+  let client = null;
   try {
-    const firmId = req.user.firmId;
-    const caseId = req.params.caseId;
-
-    if (!firmId) return res.status(403).json({ success: false, message: 'Büro yetkiniz bulunmuyor.' });
-
     if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Lütfen bir dosya yükleyin.' });
+      const error = new Error('Lutfen bir dosya yukleyin.');
+      error.status = 400;
+      error.code = 'FILE_MISSING';
+      throw error;
     }
 
-    const document = await CaseDocument.create({
-      caseId,
-      firmId,
-      documentName: req.file.originalname,
-      fileUrl: `/uploads/${req.file.filename}`,
+    const metadata = await validateTemporaryUpload(req.file);
+    const scan = await fileScanner.scan(req.file.path, metadata);
+    if (!scan?.clean) {
+      const error = new Error('Dosya guvenlik taramasindan gecemedi.');
+      error.status = 422;
+      error.code = 'MALWARE_DETECTED';
+      throw error;
+    }
+
+    const safeFilename = storage.createStorageKey(metadata.extension);
+    storedKey = storage.keyForFilename(safeFilename);
+    await storage.store({ sourcePath: req.file.path, storageKey: storedKey });
+
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const duplicate = await client.query(
+      `SELECT id FROM case_documents
+       WHERE case_id = $1 AND sha256_hash = $2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [req.params.caseId, metadata.sha256Hash]
+    );
+    const document = await CaseDocument.createQueued({
+      db: client,
+      caseId: req.params.caseId,
+      firmId: req.matter.law_firm_id || null,
+      originalFilename: metadata.originalFilename,
+      safeFilename,
+      storageKey: storedKey,
       uploadedBy: req.user.id,
       documentType: req.body.documentType || req.body.document_type || 'Genel',
       description: req.body.description || null,
+      declaredMimeType: metadata.declaredMimeType,
+      detectedMimeType: metadata.detectedMimeType,
+      fileExtension: metadata.extension,
+      fileSizeBytes: metadata.fileSizeBytes,
+      sha256Hash: metadata.sha256Hash,
     });
+    const queueJob = await jobs.enqueue({
+      db: client,
+      document: {
+        ...document,
+        scope_type: req.matter.scope_type,
+        owner_user_id: req.matter.owner_user_id,
+        law_firm_id: req.matter.law_firm_id,
+      },
+    });
+    await client.query('COMMIT');
 
-    res.status(201).json({ success: true, data: document });
+    const warnings = duplicate.rows.length
+      ? [{ code: 'DUPLICATE_CONTENT', documentId: duplicate.rows[0].id }]
+      : [];
+    await AuditLogService.record({
+      req,
+      action: 'DOCUMENT_UPLOADED',
+      entityType: 'CASE_DOCUMENT',
+      entityId: document.id,
+      caseId: document.case_id,
+      documentId: document.id,
+      lawFirmId: req.matter.law_firm_id,
+      metadata: { mimeType: metadata.detectedMimeType, fileSizeBytes: metadata.fileSizeBytes, scanner: scan.provider, warnings },
+    });
+    await AuditLogService.record({
+      req,
+      action: 'DOCUMENT_QUEUED',
+      entityType: 'CASE_DOCUMENT',
+      entityId: document.id,
+      caseId: document.case_id,
+      documentId: document.id,
+      lawFirmId: req.matter.law_firm_id,
+      metadata: { jobId: queueJob.id },
+    });
+    return res.status(202).json({
+      success: true,
+      data: document,
+      document: publicDocument(document),
+      job: publicJob(queueJob),
+      warnings,
+    });
+  } catch (error) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
+    if (storedKey) {
+      try { await storage.delete(storedKey); } catch (_) {}
+    }
+    await auditRejected(req, error);
+    return next(error);
+  } finally {
+    if (client) client.release();
+    if (req.file?.path) {
+      try { await storage.deleteTemporary(req.file.path); } catch (_) {}
+    }
+  }
+};
+
+exports.getDocuments = async (req, res, next) => {
+  try {
+    const documents = await CaseDocument.findByCaseIdAccessible(req.params.caseId, req.accessContext);
+    await AuditLogService.record({
+      req,
+      action: 'DOCUMENT_LISTED',
+      entityType: 'CASE_DOCUMENT',
+      caseId: req.params.caseId,
+      lawFirmId: req.matter.law_firm_id,
+      metadata: { count: documents.length },
+    });
+    res.status(200).json({ success: true, data: documents });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Belge Analizi
- * POST /api/cases/:caseId/documents/:docId/analyze
- */
-exports.analyzeDocument = async (req, res, next) => {
+exports.getDocument = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const caseId = req.params.caseId;
-    const docId = req.params.docId;
-
-    if (!firmId) return res.status(403).json({ success: false, message: 'Yetkisiz erişim.' });
-
-    const [document, caseData] = await Promise.all([
-      CaseDocument.findById(docId, firmId, caseId),
-      Case.findById(caseId, firmId),
-    ]);
-
-    if (!document || !caseData) {
-      return res.status(404).json({ success: false, message: 'Dava veya belge bulunamadı.' });
-    }
-
-    const relativePath = String(document.file_url || '').replace(/^\/+/, '');
-    const filePath = path.join(__dirname, '..', '..', relativePath);
-    let extractedText = '';
-
-    try {
-      extractedText = await parseFileText(filePath);
-    } catch (parseError) {
-      await CaseDocument.markAnalysisFailed(docId, firmId, parseError.message);
-      return res.status(422).json({
-        success: false,
-        message: `Belge metni çıkarılamadı: ${parseError.message}`,
-      });
-    }
-
-    const fallback = buildFallbackAnalysis({ text: extractedText, document, caseData });
-    const extractedData = await enrichWithAi({ text: extractedText, fallback, caseData });
-    const warnings = Array.isArray(extractedData.warnings) ? extractedData.warnings : [];
-
-    const analysis = await CaseDocument.saveAnalysis({
-      firmId,
-      caseId,
-      documentId: docId,
-      extractedText,
-      summary: extractedData.summary || fallback.summary,
-      extractedData,
-      warnings,
-      createdBy: req.user.id,
-    });
-
-    const deadlines = await DeadlineService.processDocumentAnalysis(
-      { document, text: extractedText, analysis: extractedData },
-      firmId,
-      caseId,
-      req.user.id
+    if (!isUuid(req.params.documentId)) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    const document = await CaseDocument.findAccessibleDocument(
+      req.params.documentId, req.params.caseId, req.accessContext, 'read'
     );
-    const tasks = await createHumanReviewTasks({
-      firmId,
-      caseId,
-      userId: req.user.id,
-      deadlines,
-    });
+    if (!document) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    res.json({ success: true, data: document, document: publicDocument(document), job: publicJob(document.latest_job) });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    res.status(200).json({
+exports.getDocumentStatus = async (req, res, next) => {
+  try {
+    if (!isUuid(req.params.documentId)) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    const document = await CaseDocument.findAccessibleDocument(
+      req.params.documentId, req.params.caseId, req.accessContext, 'read'
+    );
+    if (!document) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    res.json({
       success: true,
       data: {
-        analysis,
-        extractedData,
-        warnings,
-        workflowAutomations: {
-          deadlines,
-          tasks,
-          requiresHumanApproval: true,
-        },
+        documentId: document.id,
+        processingStatus: document.processing_status,
+        processingAttempts: document.processing_attempts,
+        status: document.processing_status,
+        attempts: document.processing_attempts,
+        pageCount: document.page_count,
+        textExtracted: document.text_extracted,
+        ocrRequired: document.ocr_required,
+        errorCode: document.processing_error_code,
+        errorMessage: document.processing_error_message,
+        job: publicJob(document.latest_job),
       },
     });
   } catch (error) {
@@ -299,38 +226,118 @@ exports.analyzeDocument = async (req, res, next) => {
   }
 };
 
-/**
- * Davanın Belgelerini Listele
- * GET /api/cases/:caseId/documents
- */
-exports.getDocuments = async (req, res, next) => {
+exports.retryDocument = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const caseId = req.params.caseId;
+    const documentId = req.params.documentId || req.params.docId;
+    if (!isUuid(documentId)) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    const document = await CaseDocument.findAccessibleDocument(
+      documentId, req.params.caseId, req.accessContext, 'write'
+    );
+    if (!document) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    const previous = document.latest_job || await jobs.latestForDocument(document.id);
+    if (previous && jobs.ACTIVE_STATUSES.includes(previous.status)) {
+      return res.status(409).json({ success: false, message: 'Belge zaten kuyrukta veya isleniyor.', job: publicJob(previous) });
+    }
+    if (document.processing_status !== 'FAILED' && previous?.status !== 'DEAD_LETTER' && previous?.status !== 'FAILED') {
+      return res.status(409).json({ success: false, message: 'Yalnizca basarisiz belge islemleri yeniden denenebilir.' });
+    }
 
-    if (!firmId) return res.status(403).json({ success: false, message: 'Yetkisiz erişim.' });
-
-    const documents = await CaseDocument.findByCaseId(caseId, firmId);
-    res.status(200).json({ success: true, data: documents });
+    const client = await pool.connect();
+    let queueJob;
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE case_documents SET processing_status = 'QUEUED', processing_error_code = NULL,
+         processing_error_message = NULL, processing_failed_at = NULL WHERE id = $1`,
+        [document.id]
+      );
+      queueJob = await jobs.retry(document, previous, { db: client });
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    await AuditLogService.record({
+      req, action: 'DOCUMENT_RETRY_REQUESTED', entityType: 'CASE_DOCUMENT', entityId: document.id,
+      caseId: document.case_id, documentId: document.id, lawFirmId: document.law_firm_id,
+      metadata: { jobId: queueJob.id, previousJobId: previous?.id || null },
+    });
+    res.status(202).json({ success: true, job: publicJob(queueJob) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Belge Sil
- * DELETE /api/cases/:caseId/documents/:docId
- */
+exports.analyzeDocument = exports.retryDocument;
+
+exports.downloadDocument = async (req, res, next) => {
+  try {
+    const { caseId, documentId } = req.params;
+    if (!isUuid(documentId)) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    const document = await CaseDocument.findAccessibleDocument(documentId, caseId, req.accessContext, 'read');
+    if (!document) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    let file;
+    try {
+      file = await storage.openReadStream(document.storage_key || document.file_url);
+    } catch (error) {
+      return res.status(404).json({ success: false, message: 'Belge dosyasi bulunamadi.' });
+    }
+    await AuditLogService.record({
+      req, action: 'DOCUMENT_DOWNLOADED', entityType: 'CASE_DOCUMENT', entityId: documentId,
+      caseId, documentId, lawFirmId: req.matter.law_firm_id,
+    });
+    res.attachment(safeDownloadName(document.original_filename || document.document_name));
+    res.setHeader('Content-Type', document.detected_mime_type || 'application/octet-stream');
+    res.setHeader('Content-Length', String(file.size));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    file.stream.on('error', (error) => (res.headersSent ? res.destroy(error) : next(error)));
+    file.stream.pipe(res);
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.deleteDocument = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const docId = req.params.docId;
+    const documentId = req.params.documentId || req.params.docId;
+    if (!isUuid(documentId)) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
+    const document = await CaseDocument.findAccessibleDocument(
+      documentId, req.params.caseId, req.accessContext, 'write'
+    );
+    if (!document) return res.status(404).json({ success: false, message: 'Belge bulunamadi.' });
 
-    const deleted = await CaseDocument.delete(docId, firmId);
-    if (!deleted) return res.status(404).json({ success: false, message: 'Belge bulunamadı.' });
-
-    // Dosyayı diskten de silmek isterseniz burada fs.unlink yapılabilir
-    res.status(200).json({ success: true, message: 'Belge silindi.' });
+    const client = await pool.connect();
+    let deleteJob;
+    try {
+      await client.query('BEGIN');
+      const deleted = await CaseDocument.markSoftDeleted({ db: client, id: document.id, caseId: document.case_id });
+      await jobs.cancelActive(document.id, { db: client });
+      await client.query(
+        `UPDATE extraction_runs SET status = 'CANCELLED'
+         WHERE document_id = $1 AND status IN ('QUEUED', 'RUNNING')`,
+        [document.id]
+      );
+      deleteJob = await jobs.enqueue({
+        db: client,
+        document: { ...deleted, scope_type: document.scope_type, owner_user_id: document.owner_user_id, law_firm_id: document.law_firm_id },
+        jobType: 'DELETE_DOCUMENT',
+        idempotencyKey: `DELETE_DOCUMENT:${document.id}:${crypto.randomUUID()}`,
+      });
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    await AuditLogService.record({
+      req, action: 'DOCUMENT_DELETED', entityType: 'CASE_DOCUMENT', entityId: document.id,
+      caseId: document.case_id, documentId: document.id, lawFirmId: document.law_firm_id,
+      metadata: { jobId: deleteJob.id },
+    });
+    res.status(202).json({ success: true, message: 'Belge silme kuyruguna alindi.', job: publicJob(deleteJob) });
   } catch (error) {
     next(error);
   }

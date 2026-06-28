@@ -8,11 +8,11 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
 require('dotenv').config();
 
 const routes = require('./routes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
+const requestContext = require('./middleware/requestContext');
 
 const app = express();
 
@@ -27,7 +27,7 @@ app.use(helmet());
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
 }));
 
 // Rate Limiting - Brute Force koruması
@@ -61,14 +61,12 @@ app.use(generalLimiter);
 // JSON body parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(requestContext);
 
 // HTTP istek loglaması
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
-
-// Yüklenen dosyalar için statik servis (dava belgeleri)
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // =============================================================
 // Route'lar
