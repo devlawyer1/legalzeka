@@ -1,0 +1,26 @@
+.layout {
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+}
+
+.composer {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+@media (max-width: 720px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .layout > aside {
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .composer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .composer > button {
+    justify-self: end;
+  }
+}

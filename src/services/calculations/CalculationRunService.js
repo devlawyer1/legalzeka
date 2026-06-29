@@ -134,9 +134,10 @@ class CalculationRunService {
       if (existing.rows[0]) { await client.query('COMMIT'); return existing.rows[0]; }
       const warnings = run.warnings.map((item) => ({ code: item.warning_code, severity: item.severity, message: item.message }));
       const inserted = await client.query(
-        `INSERT INTO deadline_alerts (firm_id, owner_user_id, case_id, title, description, deadline_date,
-           alert_type, priority, source, source_ref, created_by, calculation_run_id, rule_version_id, calculation_warnings)
-         VALUES ($1,$2,$3,$4,$5,$6,'hukuki_sure','high','calculation',$7,$8,$9,$10,$11::jsonb) RETURNING *`,
+        `INSERT INTO deadline_alerts (firm_id, organization_id, owner_user_id, case_id, title, description, deadline_date,
+           alert_type, priority, source, source_ref, created_by, calculation_run_id, rule_version_id, calculation_warnings,
+           confirmed, status)
+         VALUES ($1,$1,$2,$3,$4,$5,$6,'hukuki_sure','high','calculation',$7,$8,$9,$10,$11::jsonb,true,'UPCOMING') RETURNING *`,
         [run.organization_id, run.owner_user_id, run.case_id, 'Hesaplamadan oluşturulan hukuki süre', `Kural sürümü: ${run.rule_snapshot?.rule?.versionNumber || '-'}`, finalDate, id, accessContext.userId, id, run.rule_version_id, JSON.stringify(warnings)]
       );
       await client.query("INSERT INTO calculation_links (calculation_run_id, case_id, deadline_id, relation_type) VALUES ($1,$2,$3,'DEADLINE') ON CONFLICT DO NOTHING", [id, run.case_id, inserted.rows[0].id]);
@@ -152,8 +153,18 @@ class CalculationRunService {
       const existing = await client.query('SELECT * FROM tasks WHERE calculation_run_id = $1', [id]);
       if (existing.rows[0]) { await client.query('COMMIT'); return existing.rows[0]; }
       const inserted = await client.query(
-        `INSERT INTO tasks (id, firm_id, owner_user_id, case_id, atayan_id, baslik, aciklama, son_tarih, oncelik, durum, calculation_run_id, rule_version_id)
-         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,'Yüksek','Yapılacak',$8,$9) RETURNING *`,
+        `INSERT INTO tasks (
+           id, firm_id, organization_id, owner_user_id, case_id, atayan_id,
+           baslik, aciklama, son_tarih, oncelik, durum,
+           title, description, status, priority, created_by, due_at,
+           source_type, source_id, calculation_run_id, rule_version_id
+         )
+         VALUES (
+           gen_random_uuid(),$1,$1,$2,$3,$4,
+           $5,$6,$7,'Yuksek','Yapilacak',
+           $5,$6,'TODO','HIGH',$4,$7,
+           'CALCULATION',$8,$8,$9
+         ) RETURNING *`,
         [run.organization_id, run.owner_user_id, run.case_id, accessContext.userId, 'Hesaplama sonucu için işlem', `Kaynak hesap: ${id}`, run.result_data.finalDate || null, id, run.rule_version_id]
       );
       await client.query("INSERT INTO calculation_links (calculation_run_id, case_id, task_id, relation_type) VALUES ($1,$2,$3,'TASK') ON CONFLICT DO NOTHING", [id, run.case_id, inserted.rows[0].id]);

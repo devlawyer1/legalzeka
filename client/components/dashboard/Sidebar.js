@@ -209,6 +209,16 @@ const firmSubItems = [
     ),
   },
   {
+    id: "practice_management",
+    label: "Büro Operasyon",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 6h16M4 12h16M4 18h10" />
+        <path d="M7 3v18" />
+      </svg>
+    ),
+  },
+  {
     id: "firm_templates",
     label: "Kurumsal Şablonlar",
     icon: (

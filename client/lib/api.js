@@ -1038,6 +1038,180 @@ export async function voidCalculation(calculationId) {
 }
 
 // ==========================================
+// Phase 5 practice management
+// ==========================================
+export async function getPracticeDashboard(organizationId) {
+  const params = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  return request(`/v1/practice/dashboard${params}`);
+}
+
+export async function getPracticeLeads({ organizationId, status, limit = 50 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (organizationId) params.set("organizationId", organizationId);
+  if (status) params.set("status", status);
+  return request(`/v1/crm/leads?${params.toString()}`);
+}
+
+export async function createPracticeLead(data) {
+  return request("/v1/crm/leads", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function convertPracticeLead(leadId, data) {
+  return request(`/v1/crm/leads/${leadId}/convert`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getPracticeClients(params = {}) {
+  const query = new URLSearchParams();
+  if (params.organizationId) query.set("organizationId", params.organizationId);
+  if (params.limit) query.set("limit", String(params.limit));
+  return request(`/v1/clients?${query.toString()}`);
+}
+
+export async function createPracticeClient(data) {
+  return request("/v1/clients", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function createConflictCheck(data) {
+  return request("/v1/conflict-checks", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function reviewConflictCheck(checkId, data) {
+  return request(`/v1/conflict-checks/${checkId}/review`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getMatterTeam(caseId) {
+  return request(`/v1/cases/${caseId}/team`);
+}
+
+export async function addMatterTeamMember(caseId, data) {
+  return request(`/v1/cases/${caseId}/team`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getMatterTasks(caseId) {
+  return request(`/v1/cases/${caseId}/tasks`);
+}
+
+export async function createMatterTask(caseId, data) {
+  return request(`/v1/cases/${caseId}/tasks`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getMatterHearings(caseId) {
+  return request(`/v1/cases/${caseId}/hearings`);
+}
+
+export async function createMatterHearing(caseId, data) {
+  return request(`/v1/cases/${caseId}/hearings`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getMatterDeadlines(caseId) {
+  return request(`/v1/cases/${caseId}/deadlines`);
+}
+
+export async function getMatterUpdates(caseId) {
+  return request(`/v1/cases/${caseId}/updates`);
+}
+
+export async function createMatterUpdate(caseId, data) {
+  return request(`/v1/cases/${caseId}/updates`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getTimeEntries(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => { if (value) query.set(key, String(value)); });
+  return request(`/v1/time-entries?${query.toString()}`);
+}
+
+export async function createTimeEntry(data) {
+  return request("/v1/time-entries", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function approveTimeEntry(timeEntryId) {
+  return request(`/v1/time-entries/${timeEntryId}/approve`, { method: "POST", body: "{}" });
+}
+
+export async function stopTimeEntry(timeEntryId, endedAt) {
+  return request(`/v1/time-entries/${timeEntryId}/stop`, {
+    method: "POST",
+    body: JSON.stringify(endedAt ? { endedAt } : {}),
+  });
+}
+
+export async function getExpenses(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => { if (value) query.set(key, String(value)); });
+  return request(`/v1/expenses?${query.toString()}`);
+}
+
+export async function createExpense(data) {
+  return request("/v1/expenses", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function createFeeAgreement(data) {
+  return request("/v1/fee-agreements", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getPracticeInvoices(organizationId) {
+  const params = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  return request(`/v1/invoices${params}`);
+}
+
+export async function createPracticeInvoice(data) {
+  return request("/v1/invoices", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function issuePracticeInvoice(invoiceId) {
+  return request(`/v1/invoices/${invoiceId}/issue`, { method: "POST", body: "{}" });
+}
+
+export async function recordPracticePayment(invoiceId, data) {
+  return request(`/v1/invoices/${invoiceId}/payments`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function inviteClientPortal(data) {
+  return request("/v1/portal/invitations", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function sharePortalItem(data) {
+  return request("/v1/portal/shared-items", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getPortalCases() {
+  return request("/v1/portal/cases");
+}
+
+export async function getPortalCase(caseId) {
+  return request(`/v1/portal/cases/${caseId}`);
+}
+
+export async function getPortalMessages(caseId) {
+  return request(`/v1/portal/messages?caseId=${encodeURIComponent(caseId)}`);
+}
+
+export async function sendPortalMessage(data) {
+  return request("/v1/portal/messages", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function downloadPortalDocument(caseId, documentId, filename = "belge") {
+  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const response = await fetch(`${API_BASE}/v1/portal/cases/${caseId}/documents/${documentId}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(data.message || "Belge indirilemedi.");
+    error.status = response.status;
+    throw error;
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+// ==========================================
 // Law Versioning (Time-Travel)
 // ==========================================
 export async function searchLaws(query, date) {
