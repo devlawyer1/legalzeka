@@ -9,6 +9,7 @@ import {
   Check,
   Download,
   FileText,
+  FileSearch,
   FolderOpen,
   GitBranch,
   ListChecks,
@@ -21,6 +22,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import LegalResearchWorkspace from "./LegalResearchWorkspace";
 import {
   acceptMatterSuggestion,
   bulkReviewMatterSuggestions,
@@ -289,6 +291,7 @@ export default function CaseWorkspace({ caseId, onBack }) {
     { id: "matrix", label: "İddia Savunma", icon: <Scale size={15} /> },
     { id: "evidence", label: "Delil Haritası", icon: <MapIcon size={15} /> },
     { id: "risks", label: "Riskler", icon: <AlertTriangle size={15} /> },
+    { id: "research", label: "Araştırma", icon: <FileSearch size={15} /> },
   ];
 
   if (!caseId) {
@@ -679,6 +682,12 @@ export default function CaseWorkspace({ caseId, onBack }) {
         </div>
       )}
 
+      {activeTab === "research" && (
+        <div style={styles.researchWorkspace}>
+          <LegalResearchWorkspace initialCaseId={caseId} embedded />
+        </div>
+      )}
+
       <style dangerouslySetInnerHTML={{ __html: `
         @media (max-width: 900px) {
           .case-room-grid { grid-template-columns: 1fr !important; }
@@ -874,6 +883,15 @@ const styles = {
     gap: 8,
     flexWrap: "wrap",
     justifyContent: "flex-end",
+  },
+  researchWorkspace: {
+    width: "100%",
+    height: "min(760px, 78vh)",
+    minHeight: 560,
+    overflow: "hidden",
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 8,
+    background: "var(--color-bg)",
   },
   documentError: {
     color: "#991B1B",

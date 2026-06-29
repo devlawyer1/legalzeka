@@ -231,7 +231,14 @@ function configuredModel(provider) {
   return process.env.OLLAMA_MODEL || 'emsal_atlasi';
 }
 
-async function chatWithUsage({ systemPrompt, userMessage, maxTokens = 4096, temperature = 0 }) {
+async function chatWithUsage({
+  systemPrompt,
+  userMessage,
+  maxTokens = 4096,
+  temperature = 0,
+  inputCostPerMillion,
+  outputCostPerMillion,
+}) {
   const provider = (process.env.LLM_PROVIDER || 'ollama').toLowerCase();
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -260,8 +267,8 @@ async function chatWithUsage({ systemPrompt, userMessage, maxTokens = 4096, temp
 
   const inputTokens = estimateTokens(`${systemPrompt}\n${userMessage}`);
   const outputTokens = estimateTokens(text);
-  const inputRate = Number(process.env.EXTRACTION_INPUT_COST_PER_MILLION || 0);
-  const outputRate = Number(process.env.EXTRACTION_OUTPUT_COST_PER_MILLION || 0);
+  const inputRate = Number(inputCostPerMillion ?? process.env.EXTRACTION_INPUT_COST_PER_MILLION ?? 0);
+  const outputRate = Number(outputCostPerMillion ?? process.env.EXTRACTION_OUTPUT_COST_PER_MILLION ?? 0);
   return {
     text,
     provider,

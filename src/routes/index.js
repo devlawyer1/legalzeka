@@ -31,6 +31,7 @@ const yargiRoutes = require('./yargi.routes');
 const legalWorkflowRoutes = require('./legalWorkflows');
 const workdeskRoutes = require('./workdesk');
 const legalSearchV1Routes = require('./legalSearchV1');
+const legalResearchV1Routes = require('./legalResearchV1');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // Route'ları bağla
@@ -59,5 +60,6 @@ router.use('/yargi', yargiRoutes);
 router.use('/legal-workflows', legalWorkflowRoutes);
 router.use('/workdesk', workdeskRoutes);
 router.use('/v1', legalSearchV1Routes);
+router.use('/v1/legal-research', legalResearchV1Routes);
 
 module.exports = router;

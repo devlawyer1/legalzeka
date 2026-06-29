@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Sidebar from "@/components/dashboard/Sidebar";
 import Workdesk from "@/components/dashboard/Workdesk";
 import SearchBar from "@/components/dashboard/SearchBar";
+import LegalResearchWorkspace from "@/components/dashboard/LegalResearchWorkspace";
 import ExecutionCalculator from "@/components/dashboard/ExecutionCalculator";
 import FeeCalculator from "@/components/dashboard/FeeCalculator";
 import TermCalculator from "@/components/dashboard/TermCalculator";
@@ -300,7 +301,7 @@ export default function DashboardPage() {
         {/* Top bar removed to save screen space */}
 
         {/* Content Area */}
-        <div style={{ ...styles.content, padding: (activePage === "notes" || activePage === "ai_chat") ? 0 : "40px 28px" }}>
+        <div style={{ ...styles.content, padding: (["notes", "ai_chat", "legal_research"].includes(activePage)) ? 0 : "40px 28px" }}>
           {activePage === "workdesk" && (
             <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
               <Workdesk
@@ -314,6 +315,12 @@ export default function DashboardPage() {
           {activePage === "ai_chat" && (
             <div style={{ height: "100%", width: "100%" }}>
               <AIChat />
+            </div>
+          )}
+
+          {activePage === "legal_research" && (
+            <div className="animate-fade-in" style={{ height: "100%", width: "100%", minHeight: 0 }}>
+              <LegalResearchWorkspace />
             </div>
           )}
 

@@ -283,7 +283,16 @@ class HybridLegalSearchService {
     if (cached) {
       const response = {
         ...cached,
-        diagnostics: { ...cached.diagnostics, cacheStatus: 'HIT' },
+        diagnostics: {
+          ...cached.diagnostics,
+          cacheStatus: 'HIT',
+          usage: {
+            ...(cached.diagnostics?.usage || {}),
+            embeddingInputTokens: 0,
+            embeddingEstimatedCost: 0,
+            cacheHit: true,
+          },
+        },
       };
       await this._recordMetric({
         ...baseMetric,
@@ -369,6 +378,14 @@ class HybridLegalSearchService {
             vectorSearchMs: Math.round(vectorSearchMs),
             rerankMs: Math.round(rerankMs),
             totalMs: Math.round(performance.now() - started),
+          },
+          usage: {
+            embeddingProvider: baseMetric.embeddingProvider,
+            embeddingModel: baseMetric.embeddingModel,
+            embeddingInputTokens,
+            embeddingEstimatedCost,
+            rerankerEstimatedCost: 0,
+            cacheHit: false,
           },
         },
       };

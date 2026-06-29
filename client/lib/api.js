@@ -39,6 +39,9 @@ async function request(endpoint, options = {}) {
 
   let data;
   let responseText = "";
+  if (response.status === 204) {
+    return { success: true, data: null };
+  }
   try {
     responseText = await response.text();
     data = JSON.parse(responseText);
@@ -411,6 +414,10 @@ export async function removeFromCollection(collectionId, itemId) {
 
 export async function getCases(firmId) {
   return request(`/cases?firmId=${firmId}`);
+}
+
+export async function getAccessibleCases() {
+  return request("/cases");
 }
 
 export async function createCase(firmId, data) {
@@ -788,6 +795,55 @@ export async function downloadCaseDocument(caseId, documentId, filename = "belge
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+// ======================== Grounded Legal Research ========================
+
+export async function createLegalResearchSession(data = {}) {
+  return request("/v1/legal-research/sessions", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getLegalResearchSessions({ caseId, limit = 50 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (caseId) params.set("caseId", caseId);
+  return request(`/v1/legal-research/sessions?${params.toString()}`);
+}
+
+export async function getLegalResearchSession(sessionId) {
+  return request(`/v1/legal-research/sessions/${sessionId}`);
+}
+
+export async function renameLegalResearchSession(sessionId, title) {
+  return request(`/v1/legal-research/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteLegalResearchSession(sessionId) {
+  return request(`/v1/legal-research/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+export async function submitLegalResearch(data, idempotencyKey) {
+  return request("/v1/legal-research/answer", {
+    method: "POST",
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
+    body: JSON.stringify(data),
+  });
+}
+
+export async function saveLegalResearchToMatter(sessionId, answerId, title) {
+  return request(`/v1/legal-research/sessions/${sessionId}/answers/${answerId}/save-to-matter`, {
+    method: "POST",
+    body: JSON.stringify(title ? { title } : {}),
+  });
+}
+
+export async function getLegalSource(sourceId) {
+  return request(`/v1/legal-sources/${sourceId}`);
 }
 
 // ==========================================
