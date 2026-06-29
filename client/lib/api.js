@@ -986,6 +986,58 @@ export async function exportDraft(draftId, format, fallbackName = "dilekce") {
 }
 
 // ==========================================
+// Versioned legal calculations
+// ==========================================
+export async function getCalculationRules(calculationType) {
+  const params = calculationType ? `?calculationType=${encodeURIComponent(calculationType)}` : "";
+  return request(`/v1/calculation-rules${params}`);
+}
+
+export async function runCalculation(kind, data, idempotencyKey) {
+  return request(`/v1/calculations/${kind}`, {
+    method: "POST",
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getCalculations({ caseId, limit = 50 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (caseId) params.set("caseId", caseId);
+  return request(`/v1/calculations?${params.toString()}`);
+}
+
+export async function getCalculation(calculationId) {
+  return request(`/v1/calculations/${calculationId}`);
+}
+
+export async function confirmCalculation(calculationId) {
+  return request(`/v1/calculations/${calculationId}/confirm`, { method: "POST", body: "{}" });
+}
+
+export async function createDeadlineFromCalculation(calculationId) {
+  return request(`/v1/calculations/${calculationId}/create-deadline`, { method: "POST", body: "{}" });
+}
+
+export async function createTaskFromCalculation(calculationId) {
+  return request(`/v1/calculations/${calculationId}/create-task`, { method: "POST", body: "{}" });
+}
+
+export async function recalculateCalculation(calculationId, idempotencyKey) {
+  return request(`/v1/calculations/${calculationId}/recalculate`, {
+    method: "POST", headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}, body: "{}",
+  });
+}
+
+export async function linkCalculationToDraft(calculationId, draftId) {
+  return request(`/v1/calculations/${calculationId}/link-draft`, { method: "POST", body: JSON.stringify({ draftId }) });
+}
+
+export async function voidCalculation(calculationId) {
+  return request(`/v1/calculations/${calculationId}`, { method: "DELETE" });
+}
+
+// ==========================================
 // Law Versioning (Time-Travel)
 // ==========================================
 export async function searchLaws(query, date) {

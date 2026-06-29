@@ -33,6 +33,7 @@ const workdeskRoutes = require('./workdesk');
 const legalSearchV1Routes = require('./legalSearchV1');
 const legalResearchV1Routes = require('./legalResearchV1');
 const draftingV1Routes = require('./draftingV1');
+const calculationsV1Routes = require('./calculationsV1');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // Route'ları bağla
@@ -63,5 +64,6 @@ router.use('/workdesk', workdeskRoutes);
 router.use('/v1', legalSearchV1Routes);
 router.use('/v1/legal-research', legalResearchV1Routes);
 router.use('/v1', draftingV1Routes);
+router.use('/v1', calculationsV1Routes);
 
 module.exports = router;

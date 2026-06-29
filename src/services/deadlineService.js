@@ -109,91 +109,15 @@ class DeadlineService {
    * @param {string|null} caseId - Dava ID (varsa)
    */
   static async processNotification(notification, firmId, caseId = null) {
-    const deadlines = [];
-
-    // Tebligat tipini tanımaya çalış
-    for (const [keyword, rule] of Object.entries(DEADLINE_RULES)) {
-      const titleLower = lowerTr(notification.title);
-      const contentLower = lowerTr(notification.content);
-      const typeLower = lowerTr(notification.type);
-
-      if (
-        titleLower.includes(lowerTr(keyword)) ||
-        contentLower.includes(lowerTr(keyword)) ||
-        typeLower.includes(lowerTr(keyword))
-      ) {
-        const deadlineDate = new Date(notification.date || Date.now());
-        deadlineDate.setDate(deadlineDate.getDate() + rule.days);
-        const calendarWarnings = getCalendarWarnings(deadlineDate);
-
-        try {
-          const alert = await DeadlineAlert.create({
-            firmId,
-            caseId,
-            title: rule.title,
-            description: buildDeadlineDescription(rule, notification.title, calendarWarnings),
-            deadlineDate,
-            alertType: rule.alertType,
-            priority: rule.priority,
-            source: 'uyap',
-            sourceRef: notification.id || notification.title,
-          });
-          deadlines.push(alert);
-          console.log(`[Deadline] Oluşturuldu: ${rule.title} → ${deadlineDate.toLocaleDateString('tr-TR')}`);
-        } catch (err) {
-          console.error(`[Deadline] Oluşturma hatası:`, err.message);
-        }
-        break; // İlk eşleşen kural yeterli
-      }
-    }
-
-    return deadlines;
+    void notification; void firmId; void caseId;
+    console.info('[Deadline] Legacy notification rules are DRAFT; no automatic deadline was created.');
+    return [];
   }
 
   static async processDocumentAnalysis({ document, text, analysis }, firmId, caseId = null, createdBy = null) {
-    const deadlines = [];
-    const haystack = lowerTr([
-      document?.document_name,
-      document?.file_name,
-      document?.title,
-      document?.document_type,
-      analysis?.summary,
-      String(text || '').slice(0, 3000),
-    ].filter(Boolean).join(' '));
-
-    for (const [keyword, rule] of Object.entries(DEADLINE_RULES)) {
-      if (!haystack.includes(lowerTr(keyword))) continue;
-
-      const sourceRef = `${document?.id}:${keyword}`;
-      const existing = await DeadlineAlert.findBySource({
-        firmId,
-        caseId,
-        source: 'document_analysis',
-        sourceRef,
-      });
-      if (existing) break;
-
-      const deadlineDate = new Date();
-      deadlineDate.setDate(deadlineDate.getDate() + rule.days);
-      const calendarWarnings = getCalendarWarnings(deadlineDate);
-
-      const alert = await DeadlineAlert.create({
-        firmId,
-        caseId,
-        title: rule.title,
-        description: buildDeadlineDescription(rule, document?.document_name || keyword, calendarWarnings),
-        deadlineDate,
-        alertType: rule.alertType,
-        priority: rule.priority,
-        source: 'document_analysis',
-        sourceRef,
-        createdBy,
-      });
-      deadlines.push(alert);
-      break;
-    }
-
-    return deadlines;
+    void document; void text; void analysis; void firmId; void caseId; void createdBy;
+    console.info('[Deadline] Legacy document rules are DRAFT; use a confirmed calculation run.');
+    return [];
   }
 
   /**

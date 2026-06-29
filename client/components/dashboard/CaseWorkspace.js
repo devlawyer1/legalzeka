@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CalendarDays,
+  CalendarCheck,
   CheckCircle2,
   Check,
   Download,
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 import LegalResearchWorkspace from "./LegalResearchWorkspace";
 import DraftStudio from "./DraftStudio";
+import CalculationCenter from "./CalculationCenter";
 import {
   acceptMatterSuggestion,
   bulkReviewMatterSuggestions,
@@ -294,6 +296,7 @@ export default function CaseWorkspace({ caseId, onBack }) {
     { id: "evidence", label: "Delil Haritası", icon: <MapIcon size={15} /> },
     { id: "risks", label: "Riskler", icon: <AlertTriangle size={15} /> },
     { id: "research", label: "Araştırma", icon: <FileSearch size={15} /> },
+    { id: "calculations", label: "Hesaplamalar", icon: <CalendarCheck size={15} /> },
     { id: "drafting", label: "Dilekçe Stüdyosu", icon: <FilePenLine size={15} /> },
   ];
 
@@ -688,6 +691,12 @@ export default function CaseWorkspace({ caseId, onBack }) {
       {activeTab === "research" && (
         <div style={styles.researchWorkspace}>
           <LegalResearchWorkspace initialCaseId={caseId} embedded />
+        </div>
+      )}
+
+      {activeTab === "calculations" && (
+        <div style={styles.researchWorkspace}>
+          <CalculationCenter caseId={caseId} embedded />
         </div>
       )}
 

@@ -7,13 +7,9 @@ import Workdesk from "@/components/dashboard/Workdesk";
 import SearchBar from "@/components/dashboard/SearchBar";
 import LegalResearchWorkspace from "@/components/dashboard/LegalResearchWorkspace";
 import ExecutionCalculator from "@/components/dashboard/ExecutionCalculator";
-import FeeCalculator from "@/components/dashboard/FeeCalculator";
-import TermCalculator from "@/components/dashboard/TermCalculator";
-import LaborCalculator from "@/components/dashboard/LaborCalculator";
-import CivilExecutionCalculator from "@/components/dashboard/CivilExecutionCalculator";
+import CalculationCenter from "@/components/dashboard/CalculationCenter";
 import CompensationCalculator from "@/components/dashboard/CompensationCalculator";
 import FamilyLawCalculator from "@/components/dashboard/FamilyLawCalculator";
-import FinancialCalculator from "@/components/dashboard/FinancialCalculator";
 import InheritanceCalculator from "@/components/dashboard/InheritanceCalculator";
 import AIChat from "@/components/dashboard/AIChat";
 import DevilsAdvocate from "@/components/dashboard/DevilsAdvocate";
@@ -788,32 +784,32 @@ export default function DashboardPage() {
           )}
 
           {activePage === "civil_execution" && (
-            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
-              <CivilExecutionCalculator />
+            <div className="animate-fade-in">
+              <CalculationCenter initialType="fee" />
             </div>
           )}
 
           {activePage === "fee_calculator" && (
-            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
-              <FeeCalculator />
+            <div className="animate-fade-in">
+              <CalculationCenter initialType="fee" />
             </div>
           )}
 
           {activePage === "financial_calculator" && (
-            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
-              <FinancialCalculator />
+            <div className="animate-fade-in">
+              <CalculationCenter initialType="interest" />
             </div>
           )}
 
           {activePage === "term_calculator" && (
-            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
-              <TermCalculator />
+            <div className="animate-fade-in">
+              <CalculationCenter initialType="deadline" />
             </div>
           )}
 
           {activePage === "labor_calculator" && (
-            <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center" }}>
-              <LaborCalculator />
+            <div className="animate-fade-in">
+              <CalculationCenter initialType="employment" />
             </div>
           )}
 
