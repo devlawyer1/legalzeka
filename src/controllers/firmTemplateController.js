@@ -42,8 +42,9 @@ exports.createTemplate = async (req, res) => {
 // Şablon sil
 exports.deleteTemplate = async (req, res) => {
   try {
-    const { id } = req.params;
-    await FirmTemplate.delete(id);
+    const { id, firmId } = req.params;
+    const deleted = await FirmTemplate.delete(id, firmId);
+    if (!deleted) return res.status(404).json({ error: 'Şablon bulunamadı.' });
     res.json({ message: 'Şablon silindi.' });
   } catch (error) {
     res.status(500).json({ error: error.message });

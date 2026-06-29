@@ -10,6 +10,7 @@ import {
   Download,
   FileText,
   FileSearch,
+  FilePenLine,
   FolderOpen,
   GitBranch,
   ListChecks,
@@ -23,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import LegalResearchWorkspace from "./LegalResearchWorkspace";
+import DraftStudio from "./DraftStudio";
 import {
   acceptMatterSuggestion,
   bulkReviewMatterSuggestions,
@@ -292,6 +294,7 @@ export default function CaseWorkspace({ caseId, onBack }) {
     { id: "evidence", label: "Delil Haritası", icon: <MapIcon size={15} /> },
     { id: "risks", label: "Riskler", icon: <AlertTriangle size={15} /> },
     { id: "research", label: "Araştırma", icon: <FileSearch size={15} /> },
+    { id: "drafting", label: "Dilekçe Stüdyosu", icon: <FilePenLine size={15} /> },
   ];
 
   if (!caseId) {
@@ -688,6 +691,12 @@ export default function CaseWorkspace({ caseId, onBack }) {
         </div>
       )}
 
+      {activeTab === "drafting" && (
+        <div style={styles.draftingWorkspace}>
+          <DraftStudio caseId={caseId} documents={documents} />
+        </div>
+      )}
+
       <style dangerouslySetInnerHTML={{ __html: `
         @media (max-width: 900px) {
           .case-room-grid { grid-template-columns: 1fr !important; }
@@ -888,6 +897,15 @@ const styles = {
     width: "100%",
     height: "min(760px, 78vh)",
     minHeight: 560,
+    overflow: "hidden",
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 8,
+    background: "var(--color-bg)",
+  },
+  draftingWorkspace: {
+    width: "100%",
+    height: "min(820px, 82vh)",
+    minHeight: 620,
     overflow: "hidden",
     border: "1px solid var(--color-border-subtle)",
     borderRadius: 8,

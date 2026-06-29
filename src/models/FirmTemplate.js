@@ -5,8 +5,10 @@ class FirmTemplate {
   // Yeni şablon oluştur
   static async create(data) {
     const query = `
-      INSERT INTO firm_templates (id, firm_id, title, content, template_type, tags, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO firm_templates (
+        id, firm_id, organization_id, scope_type, title, content, template_type, tags, created_by
+      )
+      VALUES ($1, $2, $2, 'ORGANIZATION', $3, $4, $5, $6, $7)
       RETURNING *
     `;
     
@@ -36,7 +38,7 @@ class FirmTemplate {
   static async findByFirm(firmId) {
     const query = `
       SELECT * FROM firm_templates 
-      WHERE firm_id = $1 
+      WHERE organization_id = $1 AND scope_type = 'ORGANIZATION' AND deleted_at IS NULL
       ORDER BY created_at DESC
     `;
     const result = await pool.query(query, [firmId]);
@@ -79,9 +81,14 @@ class FirmTemplate {
   }
 
   // Şablon sil
-  static async delete(id) {
-    const query = `DELETE FROM firm_templates WHERE id = $1 RETURNING *`;
-    const result = await pool.query(query, [id]);
+  static async delete(id, firmId) {
+    const query = `
+      UPDATE firm_templates SET deleted_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND organization_id = $2
+        AND scope_type = 'ORGANIZATION' AND is_read_only = FALSE
+      RETURNING *
+    `;
+    const result = await pool.query(query, [id, firmId]);
     return result.rows[0];
   }
 

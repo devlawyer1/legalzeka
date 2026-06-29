@@ -3,9 +3,74 @@ const PetitionComparison = require('../models/PetitionComparison');
 const Case = require('../models/Case');
 const { generatePetition, comparePetitions } = require('../services/llmService');
 const { pool } = require('../config/db');
+const AuditLogService = require('../services/AuditLogService');
+const { getAccessContext } = require('../services/accessContext');
+const { getDraftingServices } = require('../services/drafting');
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function legacyDraftType(value) {
+  const type = String(value || '').toLocaleLowerCase('tr-TR');
+  if (/cevap/.test(type)) return 'RESPONSE';
+  if (/istinaf|temyiz/.test(type)) return 'APPEAL';
+  if (/itiraz/.test(type)) return 'OBJECTION';
+  if (/ihtar/.test(type)) return 'NOTICE';
+  if (/görüş|mütalaa/.test(type)) return 'LEGAL_OPINION';
+  return 'PETITION';
+}
+
+function legacyContent(sections) {
+  if (sections.length === 1) return sections[0].content;
+  return sections.map((section) => `${section.title}\n${section.content}`.trim()).filter(Boolean).join('\n\n');
+}
+
+function asLegacyPetition(detail) {
+  return {
+    id: detail.legacy_petition_id || detail.id,
+    draft_id: detail.id,
+    case_id: detail.case_id,
+    firm_id: detail.organization_id,
+    title: detail.title,
+    type: detail.draft_type,
+    content: legacyContent(detail.sections || []),
+    version: detail.versions?.[0]?.version_number || 1,
+    control_report: detail.metadata?.lastAnalysis || {},
+    created_by: detail.created_by,
+    created_at: detail.created_at,
+    updated_at: detail.updated_at,
+  };
+}
+
+async function accessContext(req) {
+  const context = await getAccessContext(req);
+  if (!context) {
+    const error = new Error('Kimlik doğrulaması gerekli.');
+    error.status = 401;
+    throw error;
+  }
+  return context;
+}
+
+async function resolveLegacyDraft(caseId, id, context) {
+  const services = getDraftingServices();
+  const drafts = await services.draftService.list({ accessContext: context, caseId, limit: 200 });
+  const match = drafts.find((draft) => draft.id === id || draft.legacy_petition_id === id);
+  return match ? services.draftService.getDetail(match.id, context) : null;
+}
+
+async function auditDraft(req, action, draft, metadata = {}) {
+  await AuditLogService.record({
+    req,
+    strict: true,
+    action,
+    entityType: 'LEGAL_DRAFT',
+    entityId: draft.id,
+    caseId: draft.case_id,
+    lawFirmId: draft.organization_id,
+    metadata: { legacyAdapter: true, ...metadata },
+  });
 }
 
 function flattenAnalysis(rows, key) {
@@ -89,12 +154,14 @@ function buildPetitionControlReport({ petitionType, parties, evidence, additiona
  */
 exports.getPetitions = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
     const caseId = req.params.caseId;
-
-    if (!firmId) return res.status(403).json({ success: false, message: 'Yetkisiz erişim.' });
-
-    const petitions = await Petition.findByCaseId(caseId, firmId);
+    const context = await accessContext(req);
+    const services = getDraftingServices();
+    const drafts = await services.draftService.list({ accessContext: context, caseId, limit: 200 });
+    const petitions = [];
+    for (const draft of drafts) {
+      petitions.push(asLegacyPetition(await services.draftService.getDetail(draft.id, context)));
+    }
     res.status(200).json({ success: true, data: petitions });
   } catch (error) {
     next(error);
@@ -107,15 +174,9 @@ exports.getPetitions = async (req, res, next) => {
  */
 exports.getPetitionById = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const id = req.params.id;
-
-    if (!firmId) return res.status(403).json({ success: false, message: 'Yetkisiz erişim.' });
-
-    const petition = await Petition.findById(id, firmId);
+    const petition = await resolveLegacyDraft(req.params.caseId, req.params.id, await accessContext(req));
     if (!petition) return res.status(404).json({ success: false, message: 'Dilekçe bulunamadı.' });
-
-    res.status(200).json({ success: true, data: petition });
+    res.status(200).json({ success: true, data: asLegacyPetition(petition) });
   } catch (error) {
     next(error);
   }
@@ -127,25 +188,25 @@ exports.getPetitionById = async (req, res, next) => {
  */
 exports.createPetition = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
     const caseId = req.params.caseId;
     const { title, type, content } = req.body;
-
-    if (!firmId) return res.status(403).json({ success: false, message: 'Büro yetkiniz bulunmuyor.' });
     if (!title || !type || !content) {
       return res.status(400).json({ success: false, message: 'Başlık, tür ve içerik zorunludur.' });
     }
-
-    const petition = await Petition.create({
-      caseId,
-      firmId,
-      title,
-      type,
-      content,
-      createdBy: req.user.id
+    const context = await accessContext(req);
+    const services = getDraftingServices();
+    const created = await services.draftService.create({
+      caseId, title, draftType: legacyDraftType(type),
+      sections: [{ sectionKey: 'FACTS', title: 'Dilekçe Metni', content }],
+    }, context);
+    const detail = await services.draftService.getDetail(created.id, context);
+    await auditDraft(req, 'DRAFT_CREATED', detail, { versionId: detail.current_version_id });
+    await auditDraft(req, 'DRAFT_VERSION_CREATED', detail, { versionId: detail.current_version_id, versionNumber: 1 });
+    res.status(201).json({
+      success: true,
+      data: asLegacyPetition(detail),
+      deprecation: { replacement: '/api/v1/drafts', canonicalDraftId: detail.id },
     });
-
-    res.status(201).json({ success: true, data: petition });
   } catch (error) {
     next(error);
   }
@@ -190,20 +251,15 @@ exports.generateAiPetition = async (req, res, next) => {
       workspaceContext,
     });
 
-    if (save) {
-      const petition = await Petition.create({
-        caseId,
-        firmId,
-        title: `${petitionType} Taslağı`,
-        type: petitionType,
-        content: generatedContent,
-        createdBy: req.user.id,
-        controlReport,
-      });
-      return res.status(201).json({ success: true, data: petition });
-    }
-
-    res.status(200).json({ success: true, content: generatedContent, controlReport });
+    res.status(200).json({
+      success: true,
+      content: generatedContent,
+      controlReport,
+      approvalRequired: true,
+      saved: false,
+      saveRequested: Boolean(save),
+      message: 'AI çıktısı kullanıcı onayı olmadan belgeye kaydedilmedi.',
+    });
   } catch (error) {
     next(error);
   }
@@ -215,19 +271,23 @@ exports.generateAiPetition = async (req, res, next) => {
  */
 exports.updatePetition = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const id = req.params.id;
-    const { title, type, content } = req.body;
-
-    const updates = {};
-    if (title !== undefined) updates.title = title;
-    if (type !== undefined) updates.type = type;
-    if (content !== undefined) updates.content = content;
-
-    const updated = await Petition.update(id, firmId, updates);
-    if (!updated) return res.status(404).json({ success: false, message: 'Dilekçe bulunamadı.' });
-
-    res.status(200).json({ success: true, data: updated });
+    const context = await accessContext(req);
+    const current = await resolveLegacyDraft(req.params.caseId, req.params.id, context);
+    if (!current) return res.status(404).json({ success: false, message: 'Dilekçe bulunamadı.' });
+    const input = {};
+    if (req.body.title !== undefined) input.title = req.body.title;
+    if (req.body.content !== undefined) {
+      input.sections = current.sections.map((section) => section.sectionKey === 'FACTS'
+        ? { ...section, title: current.sections.length === 1 ? 'Dilekçe Metni' : section.title, content: req.body.content }
+        : section);
+      input.changeSummary = 'Legacy API kullanıcı düzenlemesi';
+    }
+    if (!Object.keys(input).length) return res.status(400).json({ success: false, message: 'Güncellenecek alan bulunamadı.' });
+    const result = await getDraftingServices().draftService.update(current.id, input, context);
+    const updated = await getDraftingServices().draftService.getDetail(current.id, context);
+    await auditDraft(req, 'DRAFT_UPDATED', updated, { versionCreated: Boolean(input.sections) });
+    if (input.sections) await auditDraft(req, 'DRAFT_VERSION_CREATED', updated, { versionId: result.id, versionNumber: result.version_number });
+    res.status(200).json({ success: true, data: asLegacyPetition(updated), deprecation: { replacement: `/api/v1/drafts/${current.id}` } });
   } catch (error) {
     next(error);
   }
@@ -239,12 +299,11 @@ exports.updatePetition = async (req, res, next) => {
  */
 exports.deletePetition = async (req, res, next) => {
   try {
-    const firmId = req.user.firmId;
-    const id = req.params.id;
-
-    const success = await Petition.delete(id, firmId);
-    if (!success) return res.status(404).json({ success: false, message: 'Dilekçe bulunamadı.' });
-
+    const context = await accessContext(req);
+    const current = await resolveLegacyDraft(req.params.caseId, req.params.id, context);
+    if (!current) return res.status(404).json({ success: false, message: 'Dilekçe bulunamadı.' });
+    await getDraftingServices().draftService.softDelete(current.id, context);
+    await auditDraft(req, 'DRAFT_UPDATED', current, { status: 'ARCHIVED' });
     res.status(200).json({ success: true, message: 'Dilekçe silindi.' });
   } catch (error) {
     next(error);

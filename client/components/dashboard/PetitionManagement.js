@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { getPetitions, deletePetition, generateAiPetition, createPetition, getPetitionComparisons, compareAiPetitions } from "@/lib/api";
 import PetitionGeneratorModal from "./PetitionGeneratorModal";
 import PetitionComparisonModal from "./PetitionComparisonModal";
+import DraftStudio from "./DraftStudio";
+import { ArrowLeft } from "lucide-react";
 
 function normalizeControlReport(report) {
   if (!report) return null;
@@ -42,6 +44,20 @@ function renderControlReport(report) {
 }
 
 export default function PetitionManagement({ firmId, caseId, onBack }) {
+  if (firmId && caseId) {
+    return (
+      <div style={{ height: "min(860px, 86vh)", minHeight: 650, display: "flex", flexDirection: "column", gap: 10 }}>
+        <button onClick={onBack} style={{ ...secondaryBtnStyle, alignSelf: "flex-start" }}><ArrowLeft size={16} /> Dava listesine dön</button>
+        <div style={{ flex: 1, minHeight: 0, border: "1px solid var(--color-border-subtle)", borderRadius: 8, overflow: "hidden" }}>
+          <DraftStudio caseId={caseId} />
+        </div>
+      </div>
+    );
+  }
+  return <LegacyPetitionManagement firmId={firmId} caseId={caseId} onBack={onBack} />;
+}
+
+function LegacyPetitionManagement({ firmId, caseId, onBack }) {
   const [petitions, setPetitions] = useState([]);
   const [comparisons, setComparisons] = useState([]);
   const [loading, setLoading] = useState(false);

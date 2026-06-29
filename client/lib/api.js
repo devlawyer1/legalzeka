@@ -847,6 +847,145 @@ export async function getLegalSource(sourceId) {
 }
 
 // ==========================================
+// Legal Draft Studio
+// ==========================================
+
+export async function getDrafts(caseId) {
+  const params = new URLSearchParams();
+  if (caseId) params.set("caseId", caseId);
+  return request(`/v1/drafts?${params.toString()}`);
+}
+
+export async function getDraft(draftId) {
+  return request(`/v1/drafts/${draftId}`);
+}
+
+export async function createDraft(data) {
+  return request("/v1/drafts", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateDraft(draftId, data) {
+  return request(`/v1/drafts/${draftId}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteDraftStudioDraft(draftId) {
+  return request(`/v1/drafts/${draftId}`, { method: "DELETE" });
+}
+
+export async function getDraftTemplates(caseId) {
+  const params = new URLSearchParams();
+  if (caseId) params.set("caseId", caseId);
+  return request(`/v1/draft-templates?${params.toString()}`);
+}
+
+export async function createDraftTemplate(data) {
+  return request("/v1/draft-templates", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateDraftTemplate(templateId, data) {
+  return request(`/v1/draft-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteDraftTemplate(templateId) {
+  return request(`/v1/draft-templates/${templateId}`, { method: "DELETE" });
+}
+
+export async function getDraftVersions(draftId) {
+  return request(`/v1/drafts/${draftId}/versions`);
+}
+
+export async function compareDraftVersions(draftId, left, right) {
+  const params = new URLSearchParams({ left, right });
+  return request(`/v1/drafts/${draftId}/versions/compare?${params.toString()}`);
+}
+
+export async function generateDraftPlan(draftId) {
+  return request(`/v1/drafts/${draftId}/generate-plan`, { method: "POST", body: "{}" });
+}
+
+export async function generateDraftSection(draftId, data) {
+  return request(`/v1/drafts/${draftId}/generate-section`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function analyzeDraft(draftId, data = {}) {
+  return request(`/v1/drafts/${draftId}/analyze`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function acceptDraftSuggestion(draftId, suggestionId) {
+  return request(`/v1/drafts/${draftId}/suggestions/${suggestionId}/accept`, { method: "POST", body: "{}" });
+}
+
+export async function rejectDraftSuggestion(draftId, suggestionId) {
+  return request(`/v1/drafts/${draftId}/suggestions/${suggestionId}/reject`, { method: "POST", body: "{}" });
+}
+
+export async function bulkReviewDraftSuggestions(draftId, data) {
+  return request(`/v1/drafts/${draftId}/suggestions/bulk-review`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function searchDraftSources(draftId, data) {
+  return request(`/v1/drafts/${draftId}/source-search`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function addDraftCitation(draftId, data) {
+  return request(`/v1/drafts/${draftId}/citations`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function removeDraftCitation(draftId, citationId) {
+  return request(`/v1/drafts/${draftId}/citations/${citationId}`, { method: "DELETE" });
+}
+
+export async function getEvidenceMatrix(caseId) {
+  return request(`/v1/cases/${caseId}/evidence-matrix`);
+}
+
+export async function createMatterClaim(caseId, data) {
+  return request(`/v1/cases/${caseId}/claims`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function createMatterEvidence(caseId, data) {
+  return request(`/v1/cases/${caseId}/evidence`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function createEvidenceRelation(caseId, data) {
+  return request(`/v1/cases/${caseId}/evidence-relations`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function reviewEvidenceRelation(caseId, relationId, status) {
+  return request(`/v1/cases/${caseId}/evidence-relations/${relationId}/review`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function linkDraftClaim(draftId, data) {
+  return request(`/v1/drafts/${draftId}/claim-relations`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function exportDraft(draftId, format, fallbackName = "dilekce") {
+  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const response = await fetch(`${API_BASE}/v1/drafts/${draftId}/export/${format}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(data.message || "Belge dışa aktarılamadı.");
+    error.status = response.status;
+    throw error;
+  }
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const filename = match ? decodeURIComponent(match[1]) : `${fallbackName}.${format}`;
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+// ==========================================
 // Law Versioning (Time-Travel)
 // ==========================================
 export async function searchLaws(query, date) {
