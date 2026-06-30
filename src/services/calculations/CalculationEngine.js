@@ -24,7 +24,7 @@ class CalculationEngine {
     this.fee = new FeeCalculator({ ruleService: this.ruleService, executor: this.executor });
   }
 
-  async calculate(kind, input, accessContext, { idempotencyKey = null, parentRunId = null } = {}) {
+  async calculate(kind, input, accessContext, { idempotencyKey = null, parentRunId = null, db = null } = {}) {
     await this.runService.resolveScope(input, accessContext, 'write');
     const effectiveAt = input.effectiveAt || new Date().toISOString().slice(0, 10);
     let calculationType; let output;
@@ -34,7 +34,7 @@ class CalculationEngine {
     else if (kind === 'employment') { calculationType = input.calculationType; if (!EMPLOYMENT.has(calculationType)) throw Object.assign(new Error('Invalid employment calculation type.'), { status: 400, code: 'INVALID_CALCULATION_TYPE' }); output = await this.employment.calculate(input, { effectiveAt }); }
     else if (kind === 'fee') { calculationType = input.calculationType || 'COURT_FEE'; if (!FEES.has(calculationType)) throw Object.assign(new Error('Invalid fee calculation type.'), { status: 400, code: 'INVALID_CALCULATION_TYPE' }); output = await this.fee.calculate(input, { effectiveAt }); }
     else throw Object.assign(new Error('Unsupported calculation type.'), { status: 400, code: 'INVALID_CALCULATION_TYPE' });
-    return this.runService.create({ input, calculationType, output, effectiveAt, idempotencyKey, accessContext, parentRunId });
+    return this.runService.create({ input, calculationType, output, effectiveAt, idempotencyKey, accessContext, parentRunId, db });
   }
 
   async recalculate(id, accessContext, idempotencyKey = null) {

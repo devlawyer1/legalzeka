@@ -2,6 +2,7 @@ const os = require('os');
 const { pool } = require('../config/db');
 const jobs = require('../services/documentJobService');
 const { processJob, processingError } = require('../services/documentProcessingService');
+const { emitAgentEvent } = require('../services/agents/AgentEventService');
 
 const workerId = `${os.hostname()}:${process.pid}`.slice(0, 150);
 const concurrency = jobs.intEnv('DOCUMENT_WORKER_CONCURRENCY', 2);
@@ -27,6 +28,15 @@ async function runClaimedJob(job, claimedBy) {
     try {
       const result = await Promise.race([processJob(job, { lockedBy: claimedBy }), timeout]);
       await jobs.complete(job.id, result);
+      if (['PROCESS_DOCUMENT', 'EXTRACT_MATTER_DATA'].includes(job.job_type)) {
+        await emitAgentEvent({
+          eventType: 'DOCUMENT_PROCESSED',
+          eventKey: `${job.job_type}:${job.id}`,
+          organizationId: job.organization_id || null,
+          caseId: job.case_id,
+          inputData: { documentId: job.document_id, jobType: job.job_type },
+        });
+      }
     } finally {
       clearTimeout(timer);
     }

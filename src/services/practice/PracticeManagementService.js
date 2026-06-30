@@ -698,6 +698,12 @@ class PracticeManagementService {
     );
     if (status === 'COMPLETED' && current.status !== 'COMPLETED') {
       await this.audit(req, 'TASK_COMPLETED', 'task', taskId, { organizationId: matter.law_firm_id, caseId: matter.id });
+      const { emitAgentEvent } = require('../agents/AgentEventService');
+      await emitAgentEvent({
+        eventType: 'TASK_COMPLETED', eventKey: `task:${taskId}:completed`,
+        organizationId: matter.law_firm_id || null, caseId: matter.id,
+        inputData: { taskId },
+      });
     }
     return rows[0];
   }
@@ -1345,7 +1351,7 @@ class PracticeManagementService {
     return { document, ...file };
   }
 
-  async createMatterUpdate(caseId, input, context, { req } = {}) {
+  async createMatterUpdate(caseId, input, context, { req, emitAgentEvent = true } = {}) {
     const matter = await this.matter(caseId, context, 'write');
     const { rows } = await this.db.query(
       `INSERT INTO matter_updates (case_id, title, content, visibility, created_by)
@@ -1354,6 +1360,14 @@ class PracticeManagementService {
       [caseId, input.title, input.content, input.visibility || 'INTERNAL', context.userId]
     );
     await this.audit(req, 'MATTER_UPDATE_CREATED', 'matter_update', rows[0].id, { organizationId: matter.law_firm_id, caseId, visibility: rows[0].visibility });
+    if (emitAgentEvent) {
+      const { emitAgentEvent: emit } = require('../agents/AgentEventService');
+      await emit({
+        eventType: 'MATTER_UPDATED', eventKey: `matter-update:${rows[0].id}`,
+        organizationId: matter.law_firm_id || null, caseId,
+        inputData: { updateId: rows[0].id, visibility: rows[0].visibility },
+      });
+    }
     return rows[0];
   }
 

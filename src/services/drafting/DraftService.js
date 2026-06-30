@@ -296,10 +296,11 @@ class DraftService {
     return pages.rows.map((page) => page.extracted_text).join('\n\n').slice(0, 400000);
   }
 
-  async create(input, accessContext) {
-    const client = await this.db.connect();
+  async create(input, accessContext, { db = null } = {}) {
+    const ownsTransaction = !db;
+    const client = db || await this.db.connect();
     try {
-      await client.query('BEGIN');
+      if (ownsTransaction) await client.query('BEGIN');
       const matter = await this.findMatter(input.caseId, accessContext, 'write', { db: client });
       if (!matter) throw httpError(404, 'Dava bulunamadı.', 'MATTER_NOT_FOUND');
       const template = input.templateId
@@ -334,13 +335,13 @@ class DraftService {
         changeSummary: input.documentId ? 'Belgeden içe aktarılan ilk versiyon' : 'İlk taslak',
         db: client,
       });
-      await client.query('COMMIT');
+      if (ownsTransaction) await client.query('COMMIT');
       return { ...draft.rows[0], current_version_id: version.id, sections: version.sections };
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (ownsTransaction) await client.query('ROLLBACK');
       throw error;
     } finally {
-      client.release();
+      if (ownsTransaction) client.release();
     }
   }
 

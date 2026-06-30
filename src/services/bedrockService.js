@@ -38,6 +38,7 @@ async function invokeBedrockClaude(userMessage, options = {}) {
     temperature = 0.7,
     conversationHistory = [],
     toolsEnabled = true,
+    model: requestedModel = null,
   } = options;
 
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
@@ -77,7 +78,7 @@ async function invokeBedrockClaude(userMessage, options = {}) {
     
     // Construct the payload for ConverseCommand
     const commandPayload = {
-      modelId: MODEL_ID,
+      modelId: requestedModel || process.env.BEDROCK_MODEL || MODEL_ID,
       system: [{ text: systemPrompt }],
       messages: messages,
       inferenceConfig: {

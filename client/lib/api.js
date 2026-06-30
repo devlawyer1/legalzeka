@@ -1211,6 +1211,93 @@ export async function downloadPortalDocument(caseId, documentId, filename = "bel
   URL.revokeObjectURL(url);
 }
 
+// ======================== Controlled Agents ========================
+
+export async function getAgentWorkflows(params = {}) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+  return request(`/v1/agent-workflows${query.size ? `?${query}` : ""}`);
+}
+
+export async function createAgentWorkflow(data) {
+  return request("/v1/agent-workflows", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateAgentWorkflow(workflowId, data) {
+  return request(`/v1/agent-workflows/${workflowId}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function activateAgentWorkflow(workflowId) {
+  return request(`/v1/agent-workflows/${workflowId}/activate`, { method: "POST" });
+}
+
+export async function pauseAgentWorkflow(workflowId) {
+  return request(`/v1/agent-workflows/${workflowId}/pause`, { method: "POST" });
+}
+
+export async function startAgentRun(workflowId, data, idempotencyKey) {
+  return request(`/v1/agent-workflows/${workflowId}/runs`, {
+    method: "POST",
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getAgentRuns(params = {}) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+  return request(`/v1/agent-runs${query.size ? `?${query}` : ""}`);
+}
+
+export async function getAgentRun(runId) {
+  return request(`/v1/agent-runs/${runId}`);
+}
+
+export async function cancelAgentRun(runId) {
+  return request(`/v1/agent-runs/${runId}/cancel`, { method: "POST" });
+}
+
+export async function retryAgentRun(runId) {
+  return request(`/v1/agent-runs/${runId}/retry`, { method: "POST" });
+}
+
+export async function getAgentProposals(params = {}) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+  return request(`/v1/agent-proposals${query.size ? `?${query}` : ""}`);
+}
+
+export async function approveAgentProposal(proposalId) {
+  return request(`/v1/agent-proposals/${proposalId}/approve`, { method: "POST" });
+}
+
+export async function rejectAgentProposal(proposalId, reason = "") {
+  return request(`/v1/agent-proposals/${proposalId}/reject`, { method: "POST", body: JSON.stringify({ reason: reason || null }) });
+}
+
+export async function bulkReviewAgentProposals(data) {
+  return request("/v1/agent-proposals/bulk-review", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function createAgentSchedule(workflowId, data) {
+  return request(`/v1/agent-workflows/${workflowId}/schedules`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getAgentSchedules(workflowId) {
+  return request(`/v1/agent-workflows/${workflowId}/schedules`);
+}
+
+export async function deleteAgentSchedule(scheduleId) {
+  return request(`/v1/agent-schedules/${scheduleId}`, { method: "DELETE" });
+}
+
+export async function getCaseAgentRuns(caseId, params = {}) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+  return request(`/v1/cases/${caseId}/agent-runs${query.size ? `?${query}` : ""}`);
+}
+
+export async function getCaseAgentProposals(caseId, params = {}) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+  return request(`/v1/cases/${caseId}/agent-proposals${query.size ? `?${query}` : ""}`);
+}
+
 // ==========================================
 // Law Versioning (Time-Travel)
 // ==========================================

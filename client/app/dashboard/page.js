@@ -20,6 +20,7 @@ import CRMBoard from "@/components/crm/CRMBoard";
 import FinanceDashboard from "@/components/finance/FinanceDashboard";
 import CorporateNetwork from "@/components/corporate/CorporateNetwork";
 import PracticeManagementCenter from "@/components/dashboard/PracticeManagementCenter";
+import AgentCenter from "@/components/dashboard/AgentCenter";
 import FirmManagement from "@/components/dashboard/FirmManagement";
 import FirmTemplates from "@/components/dashboard/FirmTemplates";
 import CaseManagement from "@/components/dashboard/CaseManagement";
@@ -841,6 +842,12 @@ export default function DashboardPage() {
           {activePage === "practice_management" && (
             <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'hidden' }}>
               <PracticeManagementCenter activeFirmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "agent_center" && (
+            <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'hidden' }}>
+              <AgentCenter activeFirmId={activeFirm?.id} />
             </div>
           )}
 

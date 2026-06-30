@@ -143,7 +143,7 @@ class DraftSuggestionService {
     }
   }
 
-  async analyze(draftId, input, accessContext) {
+  async analyze(draftId, input, accessContext, { emitAgentEvent = true } = {}) {
     const started = performance.now();
     const detail = await this.draftService.getDetail(draftId, accessContext);
     const matter = await this.draftService.findMatter(detail.case_id, accessContext);
@@ -200,6 +200,14 @@ class DraftSuggestionService {
         client.release();
       }
       await this.draftService.finishAiRun(run.id, { usage: result.usage, durationMs: performance.now() - started });
+      if (emitAgentEvent) {
+        const { emitAgentEvent: emit } = require('../agents/AgentEventService');
+        await emit({
+          eventType: 'MATTER_UPDATED', eventKey: `draft-analysis:${run.id}`,
+          organizationId: detail.organization_id || null, caseId: detail.case_id,
+          inputData: { draftId, draftAnalysisRunId: run.id },
+        });
+      }
       return { ...result.analysis, suggestions, usage: result.usage, runId: run.id };
     } catch (error) {
       await this.draftService.finishAiRun(run.id, {
@@ -236,10 +244,11 @@ class DraftSuggestionService {
     }
   }
 
-  async accept(draftId, suggestionId, accessContext) {
-    const client = await this.db.connect();
+  async accept(draftId, suggestionId, accessContext, { db = null } = {}) {
+    const ownsTransaction = !db;
+    const client = db || await this.db.connect();
     try {
-      await client.query('BEGIN');
+      if (ownsTransaction) await client.query('BEGIN');
       const draft = await this.draftService.findAccessibleDraft(draftId, accessContext, 'write', { db: client });
       if (!draft) throw httpError(404, 'Taslak bulunamadı.', 'DRAFT_NOT_FOUND');
       await client.query('SELECT id FROM legal_drafts WHERE id = $1 FOR UPDATE', [draftId]);
@@ -251,7 +260,7 @@ class DraftSuggestionService {
       const suggestion = result.rows[0];
       if (!suggestion) throw httpError(404, 'Öneri bulunamadı.', 'DRAFT_SUGGESTION_NOT_FOUND');
       if (suggestion.status === 'ACCEPTED') {
-        await client.query('COMMIT');
+        if (ownsTransaction) await client.query('COMMIT');
         return { suggestion, versionId: suggestion.applied_version_id, idempotent: true };
       }
       if (suggestion.status !== 'PENDING') throw httpError(409, 'Öneri artık beklemede değil.', 'DRAFT_SUGGESTION_NOT_PENDING');
@@ -280,13 +289,13 @@ class DraftSuggestionService {
          WHERE id = $1 RETURNING *`,
         [suggestionId, version.id, accessContext.userId]
       );
-      await client.query('COMMIT');
+      if (ownsTransaction) await client.query('COMMIT');
       return { suggestion: updated.rows[0], version, idempotent: false };
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (ownsTransaction) await client.query('ROLLBACK');
       throw error;
     } finally {
-      client.release();
+      if (ownsTransaction) client.release();
     }
   }
 

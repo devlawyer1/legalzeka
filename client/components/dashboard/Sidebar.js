@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { Bot } from "lucide-react";
 
 /* ============================================================
    Emsal Atlası - Sidebar Component
@@ -217,6 +218,11 @@ const firmSubItems = [
         <path d="M7 3v18" />
       </svg>
     ),
+  },
+  {
+    id: "agent_center",
+    label: "Agent Merkezi",
+    icon: <Bot size={16} />,
   },
   {
     id: "firm_templates",

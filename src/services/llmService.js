@@ -54,7 +54,7 @@ const SYSTEM_PROMPT = `Sen "Legal Zeka" adlı Türk hukuk platformunun yapay zek
 /**
  * OpenAI API ile chat completion
  */
-async function callOpenAI(messages, { temperature = 0.7, maxTokens = 4096 } = {}) {
+async function callOpenAI(messages, { temperature = 0.7, maxTokens = 4096, model = null } = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY tanımlanmamış. Lütfen .env dosyasına ekleyin.');
 
@@ -65,7 +65,7 @@ async function callOpenAI(messages, { temperature = 0.7, maxTokens = 4096 } = {}
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      model: model || process.env.OPENAI_MODEL || 'gpt-4o',
       messages,
       temperature,
       max_tokens: maxTokens,
@@ -84,7 +84,7 @@ async function callOpenAI(messages, { temperature = 0.7, maxTokens = 4096 } = {}
 /**
  * Anthropic Claude API ile chat completion
  */
-async function callClaude(messages, { temperature = 0.7, maxTokens = 4096 } = {}) {
+async function callClaude(messages, { temperature = 0.7, maxTokens = 4096, model = null } = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY tanımlanmamış. Lütfen .env dosyasına ekleyin.');
 
@@ -99,7 +99,7 @@ async function callClaude(messages, { temperature = 0.7, maxTokens = 4096 } = {}
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+      model: model || process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
       max_tokens: maxTokens,
       temperature,
       system: systemMsg?.content || '',
@@ -120,9 +120,9 @@ async function callClaude(messages, { temperature = 0.7, maxTokens = 4096 } = {}
  * Ollama API ile local model çağrısı (emsal_atlasi)
  * Ollama generate endpoint'i kullanır.
  */
-async function callOllama(messages, { temperature = 0.7, maxTokens = 1024 } = {}) {
+async function callOllama(messages, { temperature = 0.7, maxTokens = 1024, model = null } = {}) {
   const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
-  const modelName = process.env.OLLAMA_MODEL || 'emsal_atlasi';
+  const modelName = model || process.env.OLLAMA_MODEL || 'emsal_atlasi';
 
   // Ollama'nın /api/chat endpoint'i OpenAI uyumlu mesaj formatı destekler
   const response = await fetch(`${ollamaUrl}/api/chat`, {
@@ -223,7 +223,8 @@ function estimateTokens(value) {
   return Math.max(1, Math.ceil(String(value || '').length / 4));
 }
 
-function configuredModel(provider) {
+function configuredModel(provider, override = null) {
+  if (override) return override;
   if (provider === 'openai') return process.env.OPENAI_MODEL || 'gpt-4o';
   if (provider === 'claude') return process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
   if (provider === 'gemini') return process.env.GEMINI_MODEL || 'gemini-2.5-flash';
@@ -238,15 +239,17 @@ async function chatWithUsage({
   temperature = 0,
   inputCostPerMillion,
   outputCostPerMillion,
+  providerOverride = null,
+  modelOverride = null,
 }) {
-  const provider = (process.env.LLM_PROVIDER || 'ollama').toLowerCase();
+  const provider = (providerOverride || process.env.LLM_PROVIDER || 'ollama').toLowerCase();
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userMessage },
   ];
   let text;
-  if (provider === 'openai') text = await callOpenAI(messages, { temperature, maxTokens });
-  else if (provider === 'claude') text = await callClaude(messages, { temperature, maxTokens });
+  if (provider === 'openai') text = await callOpenAI(messages, { temperature, maxTokens, model: modelOverride });
+  else if (provider === 'claude') text = await callClaude(messages, { temperature, maxTokens, model: modelOverride });
   else if (provider === 'gemini') {
     text = await invokeGemini(userMessage, {
       systemPrompt,
@@ -254,6 +257,7 @@ async function chatWithUsage({
       temperature,
       maxTokens,
       toolsEnabled: false,
+      model: modelOverride,
     });
   } else if (provider === 'bedrock') {
     text = await invokeBedrockClaude(userMessage, {
@@ -262,8 +266,9 @@ async function chatWithUsage({
       temperature,
       maxTokens,
       toolsEnabled: false,
+      model: modelOverride,
     });
-  } else text = await callOllama(messages, { temperature, maxTokens });
+  } else text = await callOllama(messages, { temperature, maxTokens, model: modelOverride });
 
   const inputTokens = estimateTokens(`${systemPrompt}\n${userMessage}`);
   const outputTokens = estimateTokens(text);
@@ -272,7 +277,7 @@ async function chatWithUsage({
   return {
     text,
     provider,
-    model: configuredModel(provider),
+    model: configuredModel(provider, modelOverride),
     inputTokens,
     outputTokens,
     estimatedCost: (inputTokens * inputRate + outputTokens * outputRate) / 1000000,

@@ -167,4 +167,11 @@ async function bulkReview({ caseId, acceptIds, rejectItems, userId, req, db = po
   }
 }
 
-module.exports = { bulkReview, getSuggestions, reviewError, reviewOne };
+module.exports = {
+  acceptLocked,
+  bulkReview,
+  getSuggestions,
+  lockSuggestion,
+  reviewError,
+  reviewOne,
+};

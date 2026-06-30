@@ -19,6 +19,7 @@ async function invokeGemini(userMessage, options = {}) {
     temperature = 0.7,
     conversationHistory = [],
     toolsEnabled = true,
+    model: requestedModel = null,
   } = options;
 
   if (!process.env.GEMINI_API_KEY) {
@@ -36,7 +37,7 @@ async function invokeGemini(userMessage, options = {}) {
 
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   
-  const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const modelName = requestedModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   
   // Prepare tools
   let tools = [];

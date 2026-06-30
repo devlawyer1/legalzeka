@@ -98,6 +98,31 @@ services:
       retries: 3
       start_period: 10s
 
+  agent-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["node", "src/workers/agentWorker.js"]
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-postgresql://postgres:postgrespassword@postgres:5432/emsal_atlasi}
+      - AGENT_WORKER_CONCURRENCY=${AGENT_WORKER_CONCURRENCY:-2}
+      - AGENT_RUN_MAX_ATTEMPTS=${AGENT_RUN_MAX_ATTEMPTS:-3}
+      - AGENT_RUN_BACKOFF_MS=${AGENT_RUN_BACKOFF_MS:-30000,120000,600000}
+      - AGENT_RUN_STALE_AFTER_MS=${AGENT_RUN_STALE_AFTER_MS:-300000}
+      - AGENT_JOB_POLL_INTERVAL_MS=${AGENT_JOB_POLL_INTERVAL_MS:-1000}
+      - AGENT_SCHEDULE_MIN_MINUTES=${AGENT_SCHEDULE_MIN_MINUTES:-5}
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   legal-data-worker:
     build:
       context: ./services/legal-data-worker

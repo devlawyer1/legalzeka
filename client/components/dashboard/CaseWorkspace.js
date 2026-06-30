@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Bot,
   ArrowLeft,
   CalendarDays,
   CalendarCheck,
@@ -27,6 +28,7 @@ import {
 import LegalResearchWorkspace from "./LegalResearchWorkspace";
 import DraftStudio from "./DraftStudio";
 import CalculationCenter from "./CalculationCenter";
+import { MatterAgentPanel } from "./AgentCenter";
 import {
   acceptMatterSuggestion,
   bulkReviewMatterSuggestions,
@@ -298,6 +300,7 @@ export default function CaseWorkspace({ caseId, onBack }) {
     { id: "research", label: "Araştırma", icon: <FileSearch size={15} /> },
     { id: "calculations", label: "Hesaplamalar", icon: <CalendarCheck size={15} /> },
     { id: "drafting", label: "Dilekçe Stüdyosu", icon: <FilePenLine size={15} /> },
+    { id: "agents", label: "Agent", icon: <Bot size={15} /> },
   ];
 
   if (!caseId) {
@@ -703,6 +706,12 @@ export default function CaseWorkspace({ caseId, onBack }) {
       {activeTab === "drafting" && (
         <div style={styles.draftingWorkspace}>
           <DraftStudio caseId={caseId} documents={documents} />
+        </div>
+      )}
+
+      {activeTab === "agents" && (
+        <div style={styles.researchWorkspace}>
+          <MatterAgentPanel caseId={caseId} />
         </div>
       )}
 

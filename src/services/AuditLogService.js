@@ -1,6 +1,6 @@
 const { pool } = require('../config/db');
 
-const BLOCKED_METADATA_KEYS = /token|password|secret|authorization|prompt|content|document_text/i;
+const BLOCKED_METADATA_KEYS = /token|password|secret|authorization|prompt|content|document_text|identity|tax|kimlik|vergi|message|body/i;
 
 function sanitizeMetadata(value, depth = 0) {
   if (depth > 3 || value === null || value === undefined) return value ?? null;

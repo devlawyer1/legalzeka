@@ -37,14 +37,18 @@ class CalculationRunService {
     return `((${alias}.organization_id IS NULL AND ${alias}.owner_user_id = $${owner}) OR ${alias}.organization_id = ANY($${orgs}::uuid[]))`;
   }
 
-  async create({ input, calculationType, output, effectiveAt, idempotencyKey, accessContext, parentRunId = null }) {
-    const client = await this.db.connect();
+  async create({ input, calculationType, output, effectiveAt, idempotencyKey, accessContext, parentRunId = null, db = null }) {
+    const ownsTransaction = !db;
+    const client = db || await this.db.connect();
     try {
-      await client.query('BEGIN');
+      if (ownsTransaction) await client.query('BEGIN');
       const scope = await this.resolveScope(input, accessContext, 'write', { db: client });
       if (idempotencyKey) {
         const existing = await client.query('SELECT id FROM calculation_runs WHERE user_id = $1 AND idempotency_key = $2 AND deleted_at IS NULL', [accessContext.userId, idempotencyKey]);
-        if (existing.rows[0]) { await client.query('COMMIT'); return this.get(existing.rows[0].id, accessContext); }
+        if (existing.rows[0]) {
+          if (ownsTransaction) await client.query('COMMIT');
+          return this.get(existing.rows[0].id, accessContext, { db: ownsTransaction ? this.db : client });
+        }
       }
       const rule = output.rule || null;
       const snapshot = {
@@ -79,9 +83,14 @@ class CalculationRunService {
       }
       if (input.caseId) await client.query("INSERT INTO calculation_links (calculation_run_id, case_id, draft_id, relation_type) VALUES ($1,$2,$3,'CASE_CONTEXT') ON CONFLICT DO NOTHING", [run.id, input.caseId, input.draftId || null]);
       if (input.draftId) await client.query("INSERT INTO calculation_links (calculation_run_id, case_id, draft_id, relation_type) VALUES ($1,$2,$3,'DRAFT_CONTEXT') ON CONFLICT DO NOTHING", [run.id, input.caseId, input.draftId]);
-      await client.query('COMMIT');
-      return this.get(run.id, accessContext);
-    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+      if (ownsTransaction) await client.query('COMMIT');
+      return this.get(run.id, accessContext, { db: ownsTransaction ? this.db : client });
+    } catch (error) {
+      if (ownsTransaction) await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      if (ownsTransaction) client.release();
+    }
   }
 
   async list(accessContext, { caseId = null, limit = 50 } = {}) {
@@ -122,16 +131,20 @@ class CalculationRunService {
     return this.get(rows[0].id, accessContext);
   }
 
-  async createDeadline(id, accessContext) {
-    const client = await this.db.connect();
+  async createDeadline(id, accessContext, { db = null } = {}) {
+    const ownsTransaction = !db;
+    const client = db || await this.db.connect();
     try {
-      await client.query('BEGIN');
+      if (ownsTransaction) await client.query('BEGIN');
       const run = await this.get(id, accessContext, { db: client });
       if (run.status !== 'CONFIRMED') throw runError(409, 'Deadline için hesap onaylanmalı.', 'CALCULATION_NOT_CONFIRMED');
       const finalDate = run.result_data.finalDate;
       if (!finalDate) throw runError(409, 'Hesap sonucu bir nihai tarih içermiyor.', 'FINAL_DATE_MISSING');
       const existing = await client.query('SELECT * FROM deadline_alerts WHERE calculation_run_id = $1', [id]);
-      if (existing.rows[0]) { await client.query('COMMIT'); return existing.rows[0]; }
+      if (existing.rows[0]) {
+        if (ownsTransaction) await client.query('COMMIT');
+        return existing.rows[0];
+      }
       const warnings = run.warnings.map((item) => ({ code: item.warning_code, severity: item.severity, message: item.message }));
       const inserted = await client.query(
         `INSERT INTO deadline_alerts (firm_id, organization_id, owner_user_id, case_id, title, description, deadline_date,
@@ -141,8 +154,14 @@ class CalculationRunService {
         [run.organization_id, run.owner_user_id, run.case_id, 'Hesaplamadan oluşturulan hukuki süre', `Kural sürümü: ${run.rule_snapshot?.rule?.versionNumber || '-'}`, finalDate, id, accessContext.userId, id, run.rule_version_id, JSON.stringify(warnings)]
       );
       await client.query("INSERT INTO calculation_links (calculation_run_id, case_id, deadline_id, relation_type) VALUES ($1,$2,$3,'DEADLINE') ON CONFLICT DO NOTHING", [id, run.case_id, inserted.rows[0].id]);
-      await client.query('COMMIT'); return inserted.rows[0];
-    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+      if (ownsTransaction) await client.query('COMMIT');
+      return inserted.rows[0];
+    } catch (error) {
+      if (ownsTransaction) await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      if (ownsTransaction) client.release();
+    }
   }
 
   async createTask(id, accessContext) {

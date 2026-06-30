@@ -93,6 +93,7 @@ async function recoverStale({ db = pool } = {}) {
          error_message = 'Worker lock expired; job recovered.',
          updated_at = CURRENT_TIMESTAMP
      WHERE status = 'RUNNING'
+       AND job_type <> 'AGENT_RUN'
        AND locked_at < CURRENT_TIMESTAMP - ($1::bigint * INTERVAL '1 millisecond')
      RETURNING *`,
     [staleMs]
@@ -134,6 +135,7 @@ async function claimNext({ db = pool, workerId }) {
          SELECT id
          FROM document_processing_jobs
          WHERE status IN ('QUEUED', 'RETRYING')
+           AND job_type <> 'AGENT_RUN'
            AND available_at <= CURRENT_TIMESTAMP
          ORDER BY priority DESC, available_at ASC, created_at ASC
          FOR UPDATE SKIP LOCKED
