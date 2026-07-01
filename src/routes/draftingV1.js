@@ -2,6 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const controller = require('../controllers/draftController');
 const { authenticate } = require('../middleware/auth');
+const { requireFeature } = require('../services/education/EntitlementService');
 
 const router = express.Router();
 const aiLimiter = rateLimit({
@@ -14,6 +15,7 @@ const aiLimiter = rateLimit({
 });
 
 router.use(authenticate);
+router.use(requireFeature('PROFESSIONAL_MATTER'));
 router.get('/draft-templates', controller.listTemplates);
 router.post('/draft-templates', controller.createTemplate);
 router.patch('/draft-templates/:templateId', controller.updateTemplate);

@@ -1,9 +1,11 @@
 const express = require('express');
 const controller = require('../controllers/calculationController');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireFeature } = require('../services/education/EntitlementService');
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requireFeature('PROFESSIONAL_MATTER'));
 router.get('/calculation-rules', controller.listRules);
 router.get('/calculation-rules/:ruleCode/versions', controller.listRuleVersions);
 router.post('/calculations/deadline', controller.calculateDeadline);

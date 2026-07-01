@@ -140,7 +140,11 @@ test('Phase 6 controlled agents and workflows', async (t) => {
   await t.test('migration 009 is recorded, seeded and idempotent', async () => {
     const migration = await adminPool.query("SELECT checksum FROM schema_migrations WHERE version = '20260629_009_phase6_controlled_agents'");
     assert.equal(migration.rows[0].checksum.length, 64);
-    assert.equal((await adminPool.query('SELECT count(*)::int AS count FROM agent_workflows WHERE is_system_template')).rows[0].count, 8);
+    assert.equal((await adminPool.query(`SELECT count(*)::int AS count FROM agent_workflows
+      WHERE is_system_template AND workflow_type IN (
+        'MATTER_INTAKE','DOCUMENT_REVIEW','EVIDENCE_GAP_REVIEW','LEGAL_RESEARCH',
+        'RESEARCH_MONITOR','DRAFT_REVIEW','DEADLINE_RISK','CLIENT_UPDATE'
+      )`)).rows[0].count, 8);
     assert.equal((await migrate({ dbPool: adminPool, logger: silentLogger })).applied, 0);
   });
 

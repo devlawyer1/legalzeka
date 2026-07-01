@@ -21,6 +21,7 @@ import FinanceDashboard from "@/components/finance/FinanceDashboard";
 import CorporateNetwork from "@/components/corporate/CorporateNetwork";
 import PracticeManagementCenter from "@/components/dashboard/PracticeManagementCenter";
 import AgentCenter from "@/components/dashboard/AgentCenter";
+import EducationCenter from "@/components/dashboard/EducationCenter";
 import FirmManagement from "@/components/dashboard/FirmManagement";
 import FirmTemplates from "@/components/dashboard/FirmTemplates";
 import CaseManagement from "@/components/dashboard/CaseManagement";
@@ -293,13 +294,14 @@ export default function DashboardPage() {
         onNavigate={handleNavigate}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        subscription={subscription}
       />
 
       <main style={styles.main}>
         {/* Top bar removed to save screen space */}
 
         {/* Content Area */}
-        <div style={{ ...styles.content, padding: (["notes", "ai_chat", "legal_research"].includes(activePage)) ? 0 : "40px 28px" }}>
+        <div style={{ ...styles.content, padding: (["notes", "ai_chat", "legal_research", "learning_center", "academic_research", "my_courses"].includes(activePage)) ? 0 : "40px 28px" }}>
           {activePage === "workdesk" && (
             <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'auto' }}>
               <Workdesk
@@ -848,6 +850,24 @@ export default function DashboardPage() {
           {activePage === "agent_center" && (
             <div className="animate-fade-in" style={{ flex: 1, backgroundColor: 'var(--color-bg)', height: '100%', overflow: 'hidden' }}>
               <AgentCenter activeFirmId={activeFirm?.id} />
+            </div>
+          )}
+
+          {activePage === "learning_center" && (
+            <div className="animate-fade-in" style={{ height: "100%", width: "100%", minHeight: 0 }}>
+              <EducationCenter mode="learning" activeFirmId={activeFirm?.id} entitlements={subscription?.entitlements} />
+            </div>
+          )}
+
+          {activePage === "academic_research" && (
+            <div className="animate-fade-in" style={{ height: "100%", width: "100%", minHeight: 0 }}>
+              <EducationCenter mode="academic" activeFirmId={activeFirm?.id} entitlements={subscription?.entitlements} />
+            </div>
+          )}
+
+          {activePage === "my_courses" && (
+            <div className="animate-fade-in" style={{ height: "100%", width: "100%", minHeight: 0 }}>
+              <EducationCenter mode="courses" activeFirmId={activeFirm?.id} entitlements={subscription?.entitlements} />
             </div>
           )}
 

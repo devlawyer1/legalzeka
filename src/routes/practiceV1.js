@@ -1,10 +1,12 @@
 const express = require('express');
 const controller = require('../controllers/practiceController');
 const { authenticate } = require('../middleware/auth');
+const { requireFeature } = require('../services/education/EntitlementService');
 
 const router = express.Router();
 
 router.use(authenticate);
+router.use(requireFeature('PRACTICE_MANAGEMENT'));
 
 router.get('/practice/dashboard', controller.getPracticeDashboard);
 

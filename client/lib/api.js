@@ -1211,6 +1211,85 @@ export async function downloadPortalDocument(caseId, documentId, filename = "bel
   URL.revokeObjectURL(url);
 }
 
+// ======================== Education and Academia ========================
+
+function queryString(params = {}) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+  return query.size ? `?${query}` : "";
+}
+
+export async function getLearningWorkspaces(params = {}) {
+  return request(`/v1/learning-workspaces${queryString(params)}`);
+}
+
+export async function getLearningWorkspace(workspaceId) {
+  return request(`/v1/learning-workspaces/${workspaceId}`);
+}
+
+export async function createLearningWorkspace(data) {
+  return request("/v1/learning-workspaces", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function createLearningTopic(workspaceId, data) {
+  return request(`/v1/learning-workspaces/${workspaceId}/topics`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function createStudyNote(workspaceId, data) {
+  return request(`/v1/learning-workspaces/${workspaceId}/notes`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getStudyNote(noteId) { return request(`/v1/study-notes/${noteId}`); }
+export async function updateStudyNote(noteId, data) { return request(`/v1/study-notes/${noteId}`, { method: "PATCH", body: JSON.stringify(data) }); }
+export async function suggestStudyNote(noteId, data) { return request(`/v1/study-notes/${noteId}/suggestions`, { method: "POST", body: JSON.stringify(data) }); }
+
+export async function createCaseBrief(workspaceId, data) {
+  return request(`/v1/learning-workspaces/${workspaceId}/case-briefs`, { method: "POST", body: JSON.stringify(data) });
+}
+export async function generateCaseBrief(briefId) { return request(`/v1/case-briefs/${briefId}/generate`, { method: "POST" }); }
+export async function getCaseBrief(briefId) { return request(`/v1/case-briefs/${briefId}`); }
+export async function updateCaseBrief(briefId, data) { return request(`/v1/case-briefs/${briefId}`, { method: "PATCH", body: JSON.stringify(data) }); }
+
+export async function generateLearningCards(workspaceId, data) {
+  return request(`/v1/learning-workspaces/${workspaceId}/flashcards/generate`, { method: "POST", body: JSON.stringify(data) });
+}
+export async function createLearningQuiz(workspaceId, data) {
+  return request(`/v1/learning-workspaces/${workspaceId}/quizzes`, { method: "POST", body: JSON.stringify(data) });
+}
+export async function startQuizAttempt(quizId) { return request(`/v1/quiz-sets/${quizId}/attempts`, { method: "POST" }); }
+export async function getLearningQuiz(quizId) { return request(`/v1/quiz-sets/${quizId}`); }
+export async function submitQuizAttempt(attemptId, data) { return request(`/v1/quiz-attempts/${attemptId}/submit`, { method: "POST", body: JSON.stringify(data) }); }
+
+export async function createMootScenario(data) { return request("/v1/moot-scenarios", { method: "POST", body: JSON.stringify(data) }); }
+export async function startMootSession(scenarioId, data) { return request(`/v1/moot-scenarios/${scenarioId}/sessions`, { method: "POST", body: JSON.stringify(data) }); }
+export async function sendMootMessage(sessionId, data) { return request(`/v1/moot-sessions/${sessionId}/messages`, { method: "POST", body: JSON.stringify(data) }); }
+
+export async function createResearchProject(data) { return request("/v1/research-projects", { method: "POST", body: JSON.stringify(data) }); }
+export async function getResearchProject(projectId) { return request(`/v1/research-projects/${projectId}`); }
+export async function createResearchEntry(projectId, data) { return request(`/v1/research-projects/${projectId}/entries`, { method: "POST", body: JSON.stringify(data) }); }
+export async function createCodingSchema(projectId, data) { return request(`/v1/research-projects/${projectId}/coding-schemas`, { method: "POST", body: JSON.stringify(data) }); }
+export async function codeResearchSource(projectId, data) { return request(`/v1/research-projects/${projectId}/coded-items`, { method: "POST", body: JSON.stringify(data) }); }
+
+export async function createCourse(data) { return request("/v1/courses", { method: "POST", body: JSON.stringify(data) }); }
+export async function inviteCourseMember(courseId, data) { return request(`/v1/courses/${courseId}/invitations`, { method: "POST", body: JSON.stringify(data) }); }
+export async function getCourseAssignments(courseId, params = {}) { return request(`/v1/courses/${courseId}/assignments${queryString(params)}`); }
+export async function createCourseAssignment(courseId, data) { return request(`/v1/courses/${courseId}/assignments`, { method: "POST", body: JSON.stringify(data) }); }
+export async function submitAssignment(assignmentId, data) { return request(`/v1/assignments/${assignmentId}/submissions`, { method: "POST", body: JSON.stringify(data) }); }
+export async function gradeAssignmentSubmission(submissionId, data) { return request(`/v1/submissions/${submissionId}/grade`, { method: "PATCH", body: JSON.stringify(data) }); }
+
+export async function createSourceCollection(workspaceId, data) { return request(`/v1/learning-workspaces/${workspaceId}/source-collections`, { method: "POST", body: JSON.stringify(data) }); }
+export async function addSourceCollectionItem(collectionId, data) { return request(`/v1/source-collections/${collectionId}/items`, { method: "POST", body: JSON.stringify(data) }); }
+export async function createSourceAnnotation(workspaceId, data) { return request(`/v1/learning-workspaces/${workspaceId}/annotations`, { method: "POST", body: JSON.stringify(data) }); }
+
+export async function downloadEducationExport(path, fallbackName) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const response = await fetch(`${API_BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || "Dışa aktarım oluşturulamadı.");
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
+  anchor.href = url; anchor.download = match ? decodeURIComponent(match[1]) : fallbackName; anchor.click(); URL.revokeObjectURL(url);
+}
+
 // ======================== Controlled Agents ========================
 
 export async function getAgentWorkflows(params = {}) {

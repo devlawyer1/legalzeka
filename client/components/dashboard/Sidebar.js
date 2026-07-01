@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Bot } from "lucide-react";
+import { Bot, BookOpen, FlaskConical, GraduationCap } from "lucide-react";
 
 /* ============================================================
    Emsal Atlası - Sidebar Component
@@ -299,13 +299,14 @@ const firmSubItems = [
   },
 ];
 
-export default function Sidebar({ user, activePage, onNavigate, collapsed, onToggle }) {
+export default function Sidebar({ user, activePage, onNavigate, collapsed, onToggle, subscription }) {
   const [calcOpen, setCalcOpen] = useState(false);
   const [aiToolsOpen, setAiToolsOpen] = useState(false);
   const [firmOpen, setFirmOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [favorites, setFavorites] = useState([]);
   const [hoveredItemId, setHoveredItemId] = useState(null);
+  const professionalAllowed = subscription?.entitlements?.PROFESSIONAL_MATTER !== false;
 
   useEffect(() => {
     let cancelled = false;
@@ -343,7 +344,7 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
     </svg>
   );
 
-  const menuItems = [
+  const allMenuItems = [
     {
       id: "workdesk",
       label: "Çalışma Masası",
@@ -395,6 +396,21 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
           <path d="M8.5 13.5h7" />
         </svg>
       ),
+    },
+    {
+      id: "learning_center",
+      label: "Öğrenme Merkezi",
+      icon: <GraduationCap size={20} />,
+    },
+    {
+      id: "academic_research",
+      label: "Akademik Araştırma",
+      icon: <FlaskConical size={20} />,
+    },
+    {
+      id: "my_courses",
+      label: "Derslerim",
+      icon: <BookOpen size={20} />,
     },
     {
       id: "recent",
@@ -462,6 +478,19 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
     },
   ];
 
+  const educationSafeItems = new Set([
+    "ai_chat", "search", "legal_research", "learning_center", "academic_research",
+    "my_courses", "recent", "notes", "law_timeline",
+  ]);
+  const entitledMenuItems = allMenuItems.filter((item) => {
+    if (item.id === "learning_center") return subscription?.entitlements?.EDU_WORKSPACE !== false;
+    if (item.id === "academic_research") return subscription?.entitlements?.ACADEMIC_RESEARCH !== false;
+    return true;
+  });
+  const menuItems = professionalAllowed
+    ? entitledMenuItems
+    : entitledMenuItems.filter((item) => educationSafeItems.has(item.id));
+
   const initials = user
     ? `${user.firstName?.[0] || ""}${user.lastName?.[0] || ""}`.toUpperCase()
     : "EA";
@@ -508,7 +537,7 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
             menuItems.forEach(item => { allItemsMap[item.id] = { label: item.label, icon: item.icon }; });
             calculatorSubItems.forEach(item => { allItemsMap[item.id] = { label: item.label, icon: item.icon }; });
             aiToolsSubItems.forEach(item => { allItemsMap[item.id] = { label: item.label, icon: item.icon }; });
-            firmSubItems.forEach(item => { allItemsMap[item.id] = { label: item.label, icon: item.icon }; });
+            if (professionalAllowed) firmSubItems.forEach(item => { allItemsMap[item.id] = { label: item.label, icon: item.icon }; });
 
             const favItems = favorites.map(id => allItemsMap[id]).filter(Boolean);
             if (favItems.length === 0) return null;
@@ -730,6 +759,7 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
             </button>
           ))}
 {/* Büro Yönetimi Accordion */}
+          {professionalAllowed && (<div>
           <button
             onClick={() => collapsed ? onNavigate("firm_management") : setFirmOpen((o) => !o)}
             style={{
@@ -784,6 +814,7 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
               ))}
             </div>
           )}
+          </div>)}
 
           </div>
       </nav>
@@ -862,7 +893,7 @@ export default function Sidebar({ user, activePage, onNavigate, collapsed, onTog
                 <span style={styles.userName}>
                   {user?.firstName} {user?.lastName}
                 </span>
-                <span style={styles.userEmail}>Ücretsiz plan</span>
+                <span style={styles.userEmail}>{subscription?.planName || "Ücretsiz plan"}</span>
               </div>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                 <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>

@@ -36,6 +36,7 @@ const draftingV1Routes = require('./draftingV1');
 const calculationsV1Routes = require('./calculationsV1');
 const practiceV1Routes = require('./practiceV1');
 const agentsV1Routes = require('./agentsV1');
+const educationV1Routes = require('./educationV1');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // Route'ları bağla
@@ -69,5 +70,6 @@ router.use('/v1', draftingV1Routes);
 router.use('/v1', calculationsV1Routes);
 router.use('/v1', practiceV1Routes);
 router.use('/v1', agentsV1Routes);
+router.use('/v1', educationV1Routes);
 
 module.exports = router;

@@ -8,8 +8,10 @@ const { authenticate } = require('../middleware/auth');
 const { requireMatterRead, requireMatterWrite } = require('../middleware/matterAccess');
 const upload = require('../middleware/upload');
 const matterSuggestionController = require('../controllers/matterSuggestionController');
+const { requireFeature } = require('../services/education/EntitlementService');
 
 router.use(authenticate);
+router.use(requireFeature('PROFESSIONAL_MATTER'));
 
 router.post('/', caseController.createCase);
 router.get('/', caseController.getCases);

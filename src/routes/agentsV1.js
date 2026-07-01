@@ -1,9 +1,11 @@
 const express = require('express');
 const controller = require('../controllers/agentController');
 const { authenticate } = require('../middleware/auth');
+const { requireFeature } = require('../services/education/EntitlementService');
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requireFeature('AGENT_WORKFLOWS'));
 
 router.post('/agent-workflows', controller.createWorkflow);
 router.get('/agent-workflows', controller.listWorkflows);
