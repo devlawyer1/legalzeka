@@ -20,8 +20,10 @@ async function request(endpoint, options = {}) {
   // Token varsa ekle
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("accessToken");
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (options.method && !["GET", "HEAD", "OPTIONS"].includes(options.method.toUpperCase())) {
+      const csrf = document.cookie.split(";").map((item) => item.trim()).find((item) => item.startsWith("lz_csrf="));
+      if (csrf) headers["X-CSRF-Token"] = decodeURIComponent(csrf.slice("lz_csrf=".length));
     }
   }
 
@@ -30,6 +32,7 @@ async function request(endpoint, options = {}) {
     response = await fetch(url, {
       ...options,
       headers,
+      credentials: "include",
     });
   } catch (err) {
     const error = new Error("Sunucuya bağlanılamadı. Lütfen sunucunun çalıştığından emin olun.");
@@ -93,10 +96,10 @@ export async function register({ firstName, lastName, email, password, passwordC
   return data;
 }
 
-export async function login({ email, password }) {
+export async function login({ email, password, mfaCode }) {
   const data = await request("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(mfaCode ? { mfaCode } : {}) }),
   });
 
   // Token'ları kaydet
@@ -988,9 +991,38 @@ export async function exportDraft(draftId, format, fallbackName = "dilekce") {
 // ==========================================
 // Versioned legal calculations
 // ==========================================
-export async function getCalculationRules(calculationType) {
-  const params = calculationType ? `?calculationType=${encodeURIComponent(calculationType)}` : "";
-  return request(`/v1/calculation-rules${params}`);
+export async function getCalculationRules(calculationType, includeInactive = false) {
+  const params = new URLSearchParams();
+  if (calculationType) params.set("calculationType", calculationType);
+  if (includeInactive) params.set("includeInactive", "true");
+  return request(`/v1/calculation-rules${params.size ? `?${params}` : ""}`);
+}
+
+export async function getAdminRuleVersions(ruleCode) {
+  return request(`/v1/calculation-rules/${encodeURIComponent(ruleCode)}/versions?includeInactive=true`);
+}
+
+export async function activateAdminRule(ruleCode, versionId) {
+  return request(`/v1/calculation-rules/${encodeURIComponent(ruleCode)}/versions/${versionId}/activate`, { method: "POST", body: "{}" });
+}
+
+export async function getOperationsOverview(institutionId) {
+  const query = institutionId ? `?institutionId=${encodeURIComponent(institutionId)}` : "";
+  return request(`/v1/enterprise/operations${query}`);
+}
+
+export async function downloadAuditExport(format = "JSON", institutionId) {
+  const query = new URLSearchParams({ format });
+  if (institutionId) query.set("institutionId", institutionId);
+  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const response = await fetch(`${API_BASE}/v1/enterprise/audit-export?${query}`, {
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || "Audit export alinamadi.");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
+  anchor.href = url; anchor.download = `audit-export.${format.toLowerCase()}`; anchor.click(); URL.revokeObjectURL(url);
 }
 
 export async function runCalculation(kind, data, idempotencyKey) {

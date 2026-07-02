@@ -27,11 +27,13 @@ class EntitlementService {
       [userId]
     );
     if (!rows[0]) return { legacyUnrestricted: true, planName: null, maxSeats: null, features: {} };
+    const features = rows[0].feature_entitlements || {};
+    const hasFeatureContract = FEATURES.some((feature) => Object.hasOwn(features, feature));
     return {
-      legacyUnrestricted: false,
+      legacyUnrestricted: !hasFeatureContract,
       planName: rows[0].plan_name,
       maxSeats: rows[0].max_seats,
-      features: rows[0].feature_entitlements || {},
+      features,
     };
   }
 

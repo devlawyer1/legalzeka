@@ -1,0 +1,139 @@
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: Dockerfile.backend
+  env_file: ["${STAGING_ENV_FILE:-.env.example}"]
+  environment: &backend-env
+    NODE_ENV: staging
+    PORT: 3001
+    DATABASE_URL: postgresql://postgres:${STAGING_POSTGRES_PASSWORD:?set STAGING_POSTGRES_PASSWORD}@postgres:5432/legalzeka
+    REDIS_URL: redis://redis:6379
+    STORAGE_PROVIDER: s3
+    S3_ENDPOINT: http://object-storage:9000
+    S3_FORCE_PATH_STYLE: "true"
+    S3_BUCKET: legalzeka-private
+    S3_REGION: us-east-1
+    AWS_ACCESS_KEY_ID: ${STAGING_S3_ACCESS_KEY:?set STAGING_S3_ACCESS_KEY}
+    AWS_SECRET_ACCESS_KEY: ${STAGING_S3_SECRET_KEY:?set STAGING_S3_SECRET_KEY}
+    CORS_ORIGINS: ${STAGING_PUBLIC_ORIGIN:-http://localhost:8080}
+    OTEL_SERVICE_NAME: legalzeka-backend
+    RELEASE_VERSION: ${RELEASE_VERSION:-staging-local}
+  read_only: true
+  tmpfs: [/tmp, /app/uploads/.tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  stop_grace_period: 30s
+  deploy:
+    resources:
+      limits: { cpus: "2.0", memory: 2G }
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    object-storage-init: { condition: service_completed_successfully }
+
+services:
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    ports: ["8080:8080"]
+    volumes: ["./deploy/nginx/legalzeka.conf:/etc/nginx/conf.d/default.conf:ro"]
+    read_only: true
+    tmpfs: [/var/cache/nginx, /var/run]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID, NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck: { test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health/live], interval: 15s, timeout: 5s, retries: 5 }
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+    depends_on:
+      backend: { condition: service_healthy }
+      frontend: { condition: service_started }
+
+  frontend:
+    build: { context: ./client }
+    environment: { NODE_ENV: production, NEXT_PUBLIC_API_URL: /api }
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck: { test: [CMD, node, -e, "fetch('http://127.0.0.1:3002').then(r=>{if(!r.ok)process.exit(1)})"], interval: 15s, timeout: 5s, retries: 10, start_period: 20s }
+    deploy: { resources: { limits: { cpus: "1.0", memory: 1G } } }
+
+  backend:
+    <<: *backend
+    healthcheck: { test: [CMD, node, -e, "fetch('http://127.0.0.1:3001/health/ready').then(r=>{if(!r.ok)process.exit(1)})"], interval: 15s, timeout: 5s, retries: 10, start_period: 20s }
+
+  document-worker:
+    <<: *backend
+    command: [node, src/workers/documentWorker.js]
+    environment: { <<: *backend-env, OTEL_SERVICE_NAME: legalzeka-document-worker, DOCUMENT_WORKER_CONCURRENCY: 2 }
+    healthcheck: { test: [CMD, node, -e, "process.kill(1,0)"], interval: 30s, timeout: 5s, retries: 3 }
+    deploy: { resources: { limits: { cpus: "2.0", memory: 2G } } }
+
+  agent-worker:
+    <<: *backend
+    command: [node, src/workers/agentWorker.js]
+    environment: { <<: *backend-env, OTEL_SERVICE_NAME: legalzeka-agent-worker, AGENT_WORKER_CONCURRENCY: 2 }
+    healthcheck: { test: [CMD, node, -e, "process.kill(1,0)"], interval: 30s, timeout: 5s, retries: 3 }
+
+  notification-worker:
+    <<: *backend
+    command: [node, src/workers/notificationWorker.js]
+    environment: { <<: *backend-env, OTEL_SERVICE_NAME: legalzeka-notification-worker }
+    healthcheck: { test: [CMD, node, -e, "process.kill(1,0)"], interval: 30s, timeout: 5s, retries: 3 }
+
+  scheduler-worker:
+    <<: *backend
+    command: [node, src/workers/schedulerWorker.js]
+    environment: { <<: *backend-env, OTEL_SERVICE_NAME: legalzeka-scheduler-worker }
+    healthcheck: { test: [CMD, node, -e, "process.kill(1,0)"], interval: 30s, timeout: 5s, retries: 3 }
+
+  legal-data-worker:
+    build: { context: ./services/legal-data-worker }
+    profiles: [ingest]
+    env_file: ["${STAGING_ENV_FILE:-.env.example}"]
+    environment: { DATABASE_URL: "postgresql://postgres:${STAGING_POSTGRES_PASSWORD}@postgres:5432/legalzeka", EMBEDDING_BASE_URL: "http://embedding-service:80" }
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    deploy: { resources: { limits: { cpus: "1.0", memory: 1G } } }
+
+  embedding-service:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    profiles: [embedding]
+    command: [--model-id, intfloat/multilingual-e5-large]
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${STAGING_POSTGRES_PASSWORD}", POSTGRES_DB: legalzeka }
+    volumes: [staging-postgres:/var/lib/postgresql/data]
+    healthcheck: { test: [CMD-SHELL, "pg_isready -U postgres -d legalzeka"], interval: 5s, timeout: 5s, retries: 20 }
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --appendonly, "yes", --maxmemory-policy, noeviction]
+    volumes: [staging-redis:/data]
+    healthcheck: { test: [CMD, redis-cli, ping], interval: 5s, timeout: 3s, retries: 20 }
+    restart: unless-stopped
+
+  object-storage:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: [server, /data]
+    environment: { MINIO_ROOT_USER: "${STAGING_S3_ACCESS_KEY}", MINIO_ROOT_PASSWORD: "${STAGING_S3_SECRET_KEY}" }
+    volumes: [staging-objects:/data]
+    healthcheck: { test: [CMD, curl, -f, http://localhost:9000/minio/health/live], interval: 5s, timeout: 3s, retries: 20 }
+    restart: unless-stopped
+
+  object-storage-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on: { object-storage: { condition: service_healthy } }
+    entrypoint: [/bin/sh, -c]
+    command: ["mc alias set local http://object-storage:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD && mc mb --ignore-existing local/legalzeka-private && mc anonymous set none local/legalzeka-private"]
+    environment: { MINIO_ROOT_USER: "${STAGING_S3_ACCESS_KEY}", MINIO_ROOT_PASSWORD: "${STAGING_S3_SECRET_KEY}" }
+
+volumes: { staging-postgres: {}, staging-redis: {}, staging-objects: {} }

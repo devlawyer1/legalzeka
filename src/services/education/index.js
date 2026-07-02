@@ -7,6 +7,7 @@ const { CitationExportService } = require('./CitationExportService');
 const { CourseService } = require('./CourseService');
 const { EducationAccessService } = require('./EducationAccessService');
 const { EducationAiService } = require('./EducationAiService');
+const { EducationAttachmentService } = require('./EducationAttachmentService');
 const { EntitlementService } = require('./EntitlementService');
 const { LearningAssistantService } = require('./LearningAssistantService');
 const { LearningWorkspaceService } = require('./LearningWorkspaceService');
@@ -19,6 +20,7 @@ function createEducationServices({ db = pool, model } = {}) {
   const entitlements = new EntitlementService({ db });
   const integrity = new AcademicIntegrityService({ db });
   const ai = new EducationAiService({ db, ...(model ? { model } : {}) });
+  const attachmentService = new EducationAttachmentService({ db, access });
   return {
     access,
     entitlements,
@@ -34,6 +36,7 @@ function createEducationServices({ db = pool, model } = {}) {
     courseService: new CourseService({ db, access, entitlements }),
     exportService: new CitationExportService({ db, access, entitlements }),
     assistantService: new LearningAssistantService({ db, access, entitlements }),
+    attachmentService,
   };
 }
 

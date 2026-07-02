@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { login, register, isAuthenticated } from "@/lib/api";
+import responsive from "./page.module.css";
 
 /* ============================================================
    Emsal Atlası - Auth Page
@@ -19,6 +20,8 @@ export default function AuthPage() {
   // Login state
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
 
   // Register state
   const [regFirstName, setRegFirstName] = useState("");
@@ -36,7 +39,12 @@ export default function AuthPage() {
     setError("");
     setLoading(true);
     try {
-      await login({ email: loginEmail, password: loginPassword });
+      const result = await login({ email: loginEmail, password: loginPassword, mfaCode: mfaRequired ? mfaCode : undefined });
+      if (result.data?.mfaRequired) {
+        setMfaRequired(true);
+        setSuccess("Dogrulama uygulamanizdaki kodu veya bir kurtarma kodunu girin.");
+        return;
+      }
       router.push("/dashboard");
     } catch (err) {
       setError(err.message);
@@ -69,15 +77,17 @@ export default function AuthPage() {
     setActiveTab(tab);
     setError("");
     setSuccess("");
+    setMfaRequired(false);
+    setMfaCode("");
   };
 
   return (
-    <div style={styles.page}>
+    <div style={styles.page} className={responsive.page}>
       {/* Left: Visual / Branding */}
-      <div style={styles.leftPanel}>
-        <div style={styles.brandingContent}>
+      <div style={styles.leftPanel} className={responsive.leftPanel}>
+        <div style={styles.brandingContent} className={responsive.brandingContent}>
           {/* Logo */}
-          <div style={styles.logo}>
+          <div style={styles.logo} className={responsive.logo}>
             <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
               <rect width="44" height="44" rx="12" fill="var(--color-accent)" />
               <text x="50%" y="50%" dominantBaseline="central" textAnchor="middle" fill="var(--color-text-inverse)" fontSize="18" fontWeight="800" fontFamily="sans-serif">LZ</text>
@@ -85,17 +95,17 @@ export default function AuthPage() {
             <span style={styles.logoText}>Legal Zeka</span>
           </div>
 
-          <h1 style={styles.heroTitle}>
+          <h1 style={styles.heroTitle} className={responsive.heroTitle}>
             Hukuki Süreçlerinizde
             <br />
             <span style={styles.heroAccent}>Yapay Zeka Gücü.</span>
           </h1>
-          <p style={styles.heroDesc}>
+          <p style={styles.heroDesc} className={responsive.heroDesc}>
             Legal Zeka ile dilekçelerinizi oluşturun, sözleşmelerinizi analiz edin ve emsal kararlara saniyeler içinde ulaşın.
           </p>
 
           {/* Feature bullets */}
-          <div style={styles.features}>
+          <div style={styles.features} className={responsive.features}>
             {[
               "Yapay Zeka ile Dilekçe & Sözleşme İnceleme",
               "Semantik Emsal Arama ve Time-Travel Mevzuat",
@@ -114,8 +124,8 @@ export default function AuthPage() {
       </div>
 
       {/* Right: Auth Form */}
-      <div style={styles.rightPanel}>
-        <div style={styles.formContainer} className="animate-fade-in">
+      <div style={styles.rightPanel} className={responsive.rightPanel}>
+        <div style={styles.formContainer} className={`animate-fade-in ${responsive.formContainer}`}>
           {/* Tab Switcher */}
           <div style={styles.tabBar}>
             <button
@@ -148,6 +158,7 @@ export default function AuthPage() {
               <span>{error}</span>
             </div>
           )}
+          {success && <div role="status" style={styles.successBox}>{success}</div>}
 
           {/* Login Form */}
           {activeTab === "login" && (
@@ -174,8 +185,22 @@ export default function AuthPage() {
                   style={styles.input}
                 />
               </div>
+              {mfaRequired && <div style={styles.inputGroup}>
+                <label htmlFor="mfa-code" style={styles.label}>Dogrulama kodu</label>
+                <input
+                  id="mfa-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.trim())}
+                  required
+                  autoFocus
+                  style={styles.input}
+                />
+              </div>}
               <button type="submit" disabled={loading} style={styles.submitBtn}>
-                {loading ? <span style={styles.spinner} /> : "Giriş Yap"}
+                {loading ? <span style={styles.spinner} /> : mfaRequired ? "Dogrula" : "Giriş Yap"}
               </button>
             </form>
           )}
@@ -183,7 +208,7 @@ export default function AuthPage() {
           {/* Register Form */}
           {activeTab === "register" && (
             <form onSubmit={handleRegister} style={styles.form}>
-              <div style={styles.row}>
+              <div style={styles.row} className={responsive.row}>
                 <div style={styles.inputGroup}>
                   <label style={styles.label}>Ad</label>
                   <input
@@ -450,6 +475,15 @@ const styles = {
     background: "#FEF2F2",
     border: "1px solid #FECACA",
     color: "#DC2626",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  successBox: {
+    padding: "10px 14px",
+    borderRadius: "var(--radius-md)",
+    background: "#142d20",
+    border: "1px solid #2d6a43",
+    color: "#8ee0aa",
     fontSize: 13,
     marginBottom: 4,
   },

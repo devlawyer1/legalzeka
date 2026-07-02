@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const { hashOpaque } = require('./enterprise/secureValue');
 
 const BLOCKED_METADATA_KEYS = /token|password|secret|authorization|prompt|content|document_text|identity|tax|kimlik|vergi|message|body|answer|submission|note|feedback|transcript/i;
 
@@ -26,18 +27,20 @@ class AuditLogService {
     entityType = null,
     entityId = null,
     lawFirmId = null,
+    institutionId = null,
     caseId = null,
     documentId = null,
     success = true,
+    result = null,
     metadata = {},
   }) {
     try {
       await db.query(
         `INSERT INTO audit_logs (
            firm_id, user_id, action, entity_type, entity_id, metadata,
-           case_id, document_id, ip_address, user_agent, request_id, success
+           case_id, document_id, ip_address, user_agent, request_id, success, institution_id, result
          )
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12)`,
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           lawFirmId || req?.matter?.law_firm_id || null,
           req?.user?.id || null,
@@ -47,10 +50,12 @@ class AuditLogService {
           JSON.stringify(sanitizeMetadata(metadata) || {}),
           caseId || req?.matter?.id || null,
           documentId || null,
-          String(req?.ip || req?.socket?.remoteAddress || '').slice(0, 64) || null,
+          req?.ip || req?.socket?.remoteAddress ? hashOpaque(req?.ip || req?.socket?.remoteAddress).slice(0, 64) : null,
           String(req?.get?.('user-agent') || '').slice(0, 1000) || null,
           String(req?.requestId || req?.get?.('x-request-id') || '').slice(0, 128) || null,
           Boolean(success),
+          institutionId || null,
+          result || (success ? 'SUCCESS' : 'FAILURE'),
         ]
       );
       return true;

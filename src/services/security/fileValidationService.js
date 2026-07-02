@@ -44,6 +44,18 @@ async function sha256File(filePath) {
   return hash.digest('hex');
 }
 
+function validateDocumentResourceBudget(buffer, mimeType) {
+  const maxBytes = Number(process.env.DOCUMENT_MAX_FILE_SIZE_BYTES || 50 * 1024 * 1024);
+  if (!Buffer.isBuffer(buffer) || buffer.length > maxBytes) throw validationError('FILE_TOO_LARGE', 'Document resource limit exceeded.', 413);
+  if (mimeType !== 'application/pdf') return true;
+  const source = buffer.toString('latin1');
+  const pages = (source.match(/\/Type\s*\/Page\b/g) || []).length;
+  const objects = (source.match(/\b\d+\s+\d+\s+obj\b/g) || []).length;
+  if (pages > Number(process.env.PDF_MAX_PAGES || 500)) throw validationError('PDF_PAGE_LIMIT', 'PDF page limit exceeded.', 413);
+  if (objects > Number(process.env.PDF_MAX_OBJECTS || 200000)) throw validationError('PDF_OBJECT_LIMIT', 'PDF object limit exceeded.', 413);
+  return true;
+}
+
 async function validateTemporaryUpload(file) {
   if (!file?.path) throw validationError('FILE_MISSING', 'Yüklenecek dosya bulunamadı.', 400);
   const stat = await fs.promises.stat(file.path);
@@ -75,4 +87,4 @@ async function validateTemporaryUpload(file) {
   };
 }
 
-module.exports = { TYPE_BY_EXTENSION, detectMime, sha256File, validateTemporaryUpload, validationError };
+module.exports = { TYPE_BY_EXTENSION, detectMime, sha256File, validateDocumentResourceBudget, validateTemporaryUpload, validationError };

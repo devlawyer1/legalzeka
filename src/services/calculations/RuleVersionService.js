@@ -32,7 +32,14 @@ class RuleVersionService {
   async listVersions(ruleCode, { includeInactive = false } = {}) {
     const { rows } = await this.db.query(
       `SELECT version.*, rule_set.rule_code, rule_set.name, rule_set.calculation_type,
-              rule_set.jurisdiction, rule_set.legal_domain
+              rule_set.jurisdiction, rule_set.legal_domain,
+              EXISTS(
+                SELECT 1 FROM legal_rule_versions other
+                WHERE other.rule_set_id=version.rule_set_id AND other.id<>version.id
+                  AND other.status IN ('REVIEWED','ACTIVE')
+                  AND other.effective_from<=COALESCE(version.effective_to,'infinity'::date)
+                  AND version.effective_from<=COALESCE(other.effective_to,'infinity'::date)
+              ) AS conflict_warning
        FROM legal_rule_versions version
        JOIN legal_rule_sets rule_set ON rule_set.id = version.rule_set_id
        WHERE rule_set.rule_code = $1 ${includeInactive ? '' : "AND version.status = 'ACTIVE'"}
@@ -113,7 +120,7 @@ class RuleVersionService {
     if (checksum(version.rule_definition) !== version.checksum) throw serviceError(409, 'Rule checksum mismatch.', 'RULE_CHECKSUM_MISMATCH');
     const { rows } = await this.db.query(
       `UPDATE legal_rule_versions SET status = 'REVIEWED', reviewed_by = $3,
-         reviewed_at = now(), updated_at = now() WHERE id = $2 AND rule_set_id =
+         reviewed_at = now(), fixture_status = 'PASSED', updated_at = now() WHERE id = $2 AND rule_set_id =
          (SELECT id FROM legal_rule_sets WHERE rule_code = $1) RETURNING *`,
       [ruleCode, versionId, reviewerId]
     );
@@ -121,7 +128,7 @@ class RuleVersionService {
     return rows[0];
   }
 
-  async activate(ruleCode, versionId) {
+  async activate(ruleCode, versionId, activatedBy = null) {
     const version = await this.getVersion(ruleCode, versionId);
     if (!version) throw serviceError(404, 'Rule version not found.', 'RULE_VERSION_NOT_FOUND');
     if (version.status === 'ACTIVE') return version;
@@ -135,7 +142,7 @@ class RuleVersionService {
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(
-        "UPDATE legal_rule_versions SET status = 'ACTIVE', updated_at = now() WHERE id = $1 RETURNING *", [versionId]
+        "UPDATE legal_rule_versions SET status = 'ACTIVE', activated_by = $2, activated_at = now(), updated_at = now() WHERE id = $1 RETURNING *", [versionId, activatedBy || version.reviewed_by]
       );
       await client.query("UPDATE legal_rule_sets SET status = 'ACTIVE', updated_at = now() WHERE id = $1", [version.rule_set_id]);
       await client.query('COMMIT');

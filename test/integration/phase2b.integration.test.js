@@ -418,6 +418,40 @@ Karşı görüş ve istisna olarak bazı işveren vekilleri için altı aylık k
     assert.equal(rejected.rows[0].count >= 1, true);
   });
 
+  await t.test('provider outage returns retrieved sources without an invented synthesis', async () => {
+    const unavailableGenerator = {
+      async generate() {
+        throw Object.assign(new Error('LLM provider credentials are invalid.'), {
+          code: 'PROVIDER_UNCONFIGURED',
+          status: 503,
+        });
+      },
+    };
+    const service = new LegalResearchService({
+      db: adminPool,
+      searchService,
+      sourceRepository: repository,
+      sessionService,
+      answerGenerator: unavailableGenerator,
+      citationVerifier: new CitationVerifier({ repository }),
+      auditLogService: { async record() {} },
+    });
+    const session = await sessionService.create({
+      accessContext: accessContext(userA, [firmA]),
+      title: 'Provider fallback',
+    });
+    const result = await service.answer({
+      query: 'Altı aylık kıdem şartı nedir?',
+      sessionId: session.id,
+      filters: { legalDomain: 'İş Hukuku' },
+      idempotencyKey: 'provider-fallback-0001',
+    }, accessContext(userA, [firmA]));
+    assert.equal(result.status, 'INSUFFICIENT');
+    assert.equal(result.analysis.length, 0);
+    assert.equal(result.citations.length > 0, true);
+    assert.match(result.warnings.join(' '), /credentials are invalid/i);
+  });
+
   await t.test('insufficient sources do not invoke the LLM and case access is enforced', async () => {
     const callsBefore = llm.calls;
     const emptySession = await sessionService.create({

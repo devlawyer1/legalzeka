@@ -1,8 +1,8 @@
-const fs = require('fs');
+const crypto = require('node:crypto');
 const { pool } = require('../config/db');
 const AuditLogService = require('./AuditLogService');
 const { storage } = require('./storage');
-const { sha256File } = require('./security/fileValidationService');
+const { validateDocumentResourceBudget } = require('./security/fileValidationService');
 const { extractDocumentPages } = require('./documentPageExtractionService');
 const { queueExtraction, processExtractionJob } = require('./extraction/extractionService');
 
@@ -53,6 +53,20 @@ async function ensureExtractionQueued(document, db = pool) {
   return queueExtraction({ db, document });
 }
 
+async function readStoredBuffer(storageProvider, storageKey, maxBytes) {
+  const { stream } = await storageProvider.openReadStream(storageKey);
+  const chunks = []; let size = 0; const hash = crypto.createHash('sha256');
+  for await (const chunk of stream) {
+    size += chunk.length;
+    if (size > maxBytes) {
+      stream.destroy?.();
+      throw processingError('FILE_TOO_LARGE', 'Stored document exceeds the processing limit.');
+    }
+    hash.update(chunk); chunks.push(chunk);
+  }
+  return { buffer: Buffer.concat(chunks), size, sha256: hash.digest('hex') };
+}
+
 async function processDocument(job, {
   db = pool,
   storageProvider = storage,
@@ -100,17 +114,19 @@ async function processDocument(job, {
     throw processingError('FILE_SIZE_MISMATCH', 'Stored document size validation failed.');
   }
 
-  const filePath = storageProvider.resolvePath(document.storage_key);
-  if (document.sha256_hash && await sha256File(filePath) !== document.sha256_hash) {
-    throw processingError('HASH_MISMATCH', 'Stored document integrity validation failed.');
-  }
-
-  let buffer;
+  let stored;
   try {
-    buffer = await fs.promises.readFile(filePath);
+    stored = await readStoredBuffer(storageProvider, document.storage_key, Number(process.env.DOCUMENT_MAX_FILE_SIZE_BYTES || 50 * 1024 * 1024));
   } catch (error) {
+    if (error.code === 'FILE_TOO_LARGE') throw error;
     throw processingError('STORAGE_ERROR', 'Stored document could not be read.');
   }
+  if (stored.size !== metadata.size || (document.sha256_hash && stored.sha256 !== document.sha256_hash)
+      || (metadata.sha256 && metadata.sha256 !== stored.sha256)) {
+    throw processingError('HASH_MISMATCH', 'Stored document integrity validation failed.');
+  }
+  const buffer = stored.buffer;
+  validateDocumentResourceBudget(buffer, document.detected_mime_type);
 
   let pages;
   try {
@@ -229,4 +245,5 @@ module.exports = {
   processDocument,
   processJob,
   processingError,
+  readStoredBuffer,
 };

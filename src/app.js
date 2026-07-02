@@ -13,6 +13,9 @@ require('dotenv').config();
 const routes = require('./routes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 const requestContext = require('./middleware/requestContext');
+const { csrfProtection } = require('./middleware/csrf');
+const { httpMetrics } = require('./services/observability');
+const healthRoutes = require('./routes/health');
 
 const app = express();
 
@@ -21,13 +24,25 @@ const app = express();
 // =============================================================
 
 // Helmet - HTTP başlık güvenliği
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+  hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+  referrerPolicy: { policy: 'no-referrer' },
+}));
 
 // CORS - Cross-Origin Resource Sharing
+const corsAllowlist = String(process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '').split(',').map((item) => item.trim()).filter(Boolean);
+if (process.env.NODE_ENV === 'production' && (!corsAllowlist.length || corsAllowlist.includes('*'))) {
+  throw new Error('Production CORS_ORIGINS must contain an explicit allowlist.');
+}
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin(origin, callback) {
+    if (!origin || (process.env.NODE_ENV !== 'production' && !corsAllowlist.length) || corsAllowlist.includes(origin)) return callback(null, true);
+    return callback(Object.assign(new Error('Origin is not allowed.'), { status: 403, code: 'CORS_DENIED' }));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'Idempotency-Key'],
+  credentials: true,
 }));
 
 // Rate Limiting - Brute Force koruması
@@ -62,6 +77,8 @@ app.use(generalLimiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(requestContext);
+app.use(httpMetrics);
+app.use(csrfProtection);
 
 // HTTP istek loglaması
 if (process.env.NODE_ENV !== 'test') {
@@ -73,6 +90,7 @@ if (process.env.NODE_ENV !== 'test') {
 // =============================================================
 
 // Sağlık kontrolü
+app.use('/health', healthRoutes);
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     success: true,

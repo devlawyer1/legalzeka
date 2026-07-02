@@ -1,6 +1,7 @@
 const express = require('express');
 const controller = require('../controllers/educationController');
 const { authenticate } = require('../middleware/auth');
+const { single } = require('../middleware/upload');
 
 const router = express.Router();
 router.use(authenticate);
@@ -19,6 +20,7 @@ router.post('/learning-workspaces/:workspaceId/source-collections', controller.c
 router.post('/learning-workspaces/:workspaceId/annotations', controller.createAnnotation);
 router.get('/learning-workspaces/:workspaceId/annotations', controller.listAnnotations);
 router.post('/learning-workspaces/:workspaceId/research', controller.research);
+router.post('/learning-workspaces/:workspaceId/attachments', single('file'), controller.uploadWorkspaceAttachment);
 
 router.get('/study-notes/:noteId', controller.getNote);
 router.patch('/study-notes/:noteId', controller.updateNote);
@@ -42,6 +44,7 @@ router.get('/research-projects/:projectId', controller.getProject);
 router.post('/research-projects/:projectId/entries', controller.createEntry);
 router.post('/research-projects/:projectId/coding-schemas', controller.createCodingSchema);
 router.post('/research-projects/:projectId/coded-items', controller.codeSource);
+router.post('/research-projects/:projectId/attachments', single('file'), controller.uploadResearchAttachment);
 router.get('/research-projects/:projectId/export', controller.exportProject);
 
 router.post('/courses', controller.createCourse);
@@ -50,6 +53,7 @@ router.post('/course-invitations/accept', controller.acceptCourseInvitation);
 router.post('/courses/:courseId/assignments', controller.createAssignment);
 router.get('/courses/:courseId/assignments', controller.listAssignments);
 router.post('/assignments/:assignmentId/submissions', controller.createSubmission);
+router.post('/assignments/:assignmentId/attachments', single('file'), controller.uploadAssignmentAttachment);
 router.get('/submissions/:submissionId', controller.getSubmission);
 router.patch('/submissions/:submissionId/grade', controller.gradeSubmission);
 

@@ -144,6 +144,25 @@ function formatAnswerText(structured) {
   return lines.join('\n\n');
 }
 
+function isProviderFailure(error) {
+  return ['PROVIDER_UNAVAILABLE', 'PROVIDER_UNCONFIGURED', 'DEPENDENCY_TIMEOUT'].includes(error?.code);
+}
+
+function providerFallbackCitations(candidates) {
+  return candidates.map((candidate, index) => ({
+    sourceId: candidate.sourceId,
+    chunkId: candidate.chunkId,
+    claimKey: `retrieved-source-${index + 1}`,
+    sourceExcerpt: candidate.excerpt,
+    sourcePageOrSection: candidate.metadata?.pageNumber || candidate.metadata?.sectionLabel || null,
+    citationOrder: index + 1,
+    supportType: 'BACKGROUND',
+    verificationStatus: 'PARTIAL',
+    overlapScore: 1,
+    reason: 'Source retrieved successfully; AI synthesis was not performed.',
+  }));
+}
+
 class LegalResearchService {
   constructor({
     db = pool,
@@ -451,13 +470,43 @@ class LegalResearchService {
         summary: session.session_summary || null,
         recentMessages: await this.sessionService.recentContext(session.id),
       };
-      const generated = await this.answerGenerator.generate({
-        question: request.query,
-        effectiveAt,
-        matterSummary: caseContext?.safeSummary || null,
-        sessionContext,
-        sources: candidates,
-      });
+      let generated;
+      try {
+        generated = await this.answerGenerator.generate({
+          question: request.query,
+          effectiveAt,
+          matterSummary: caseContext?.safeSummary || null,
+          sessionContext,
+          sources: candidates,
+        });
+      } catch (error) {
+        if (!isProviderFailure(error)) throw error;
+        const structured = {
+          summary: 'Kaynak araması tamamlandı ancak yapay zeka sentezi şu anda kullanılamıyor.',
+          analysis: [],
+          counterArguments: [],
+          missingInformation: ['Sağlayıcı yapılandırması düzeltildikten sonra cevap sentezi yeniden çalıştırılmalıdır.'],
+          warnings: [...new Set([...baseWarnings, error.message])],
+          confidence: { level: 'LOW', reason: 'Kaynaklar getirildi; yapay zeka sentezi yapılmadı.' },
+        };
+        const durationMs = performance.now() - started;
+        await this.sessionService.completeAnswer({
+          answerId: slot.answerId,
+          answerText: structured.summary,
+          structured,
+          usage: { provider: process.env.LLM_PROVIDER || null },
+          metrics: {
+            searchEmbeddingCost,
+            totalCost: searchEmbeddingCost,
+            searchDurationMs,
+            durationMs,
+            searchCacheStatus,
+          },
+          citations: providerFallbackCitations(candidates),
+          status: 'INSUFFICIENT',
+        });
+        return this.sessionService.getAnswerPayload(slot.answerId, accessContext);
+      }
       usage = generated.usage;
 
       const verifierStarted = performance.now();

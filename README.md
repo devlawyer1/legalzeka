@@ -118,5 +118,5 @@ curl -X POST http://localhost:3000/api/auth/login \
 **Profil (JWT ile):**
 ```bash
 curl http://localhost:3000/api/auth/me \
-  -H "Authorization: Bearer SENIN_JWT_TOKENIN"
+  -H "Authorization: Bearer test"
 ```

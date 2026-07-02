@@ -1,4 +1,5 @@
 const { pool } = require('../../config/db');
+const { SMTPEmailProvider } = require('../providers');
 
 class FakeEmailProvider {
   async send({ to, subject }) {
@@ -9,8 +10,13 @@ class FakeEmailProvider {
   }
 }
 
+function createDefaultEmailProvider() {
+  if (process.env.NODE_ENV === 'test' || process.env.PRACTICE_EMAIL_PROVIDER === 'fake') return new FakeEmailProvider();
+  return new SMTPEmailProvider();
+}
+
 class PracticeNotificationService {
-  constructor({ db = pool, emailProvider = new FakeEmailProvider() } = {}) {
+  constructor({ db = pool, emailProvider = createDefaultEmailProvider() } = {}) {
     this.db = db;
     this.emailProvider = emailProvider;
   }
@@ -81,6 +87,7 @@ class PracticeNotificationService {
 }
 
 module.exports = {
+  createDefaultEmailProvider,
   FakeEmailProvider,
   PracticeNotificationService,
 };

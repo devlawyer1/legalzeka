@@ -232,6 +232,26 @@ function configuredModel(provider, override = null) {
   return process.env.OLLAMA_MODEL || 'emsal_atlasi';
 }
 
+function normalizeLlmProviderError(error, provider) {
+  if (['PROVIDER_UNAVAILABLE', 'PROVIDER_UNCONFIGURED', 'DEPENDENCY_TIMEOUT'].includes(error?.code)) {
+    return error;
+  }
+  const detail = String(error?.message || '').toLowerCase();
+  const unconfigured = [
+    'security token included in the request is invalid',
+    'unrecognizedclientexception',
+    'expiredtokenexception',
+    'api_key',
+    'api key',
+    'kimlik bilgileri eksik',
+  ].some((pattern) => detail.includes(pattern));
+  const code = unconfigured ? 'PROVIDER_UNCONFIGURED' : 'PROVIDER_UNAVAILABLE';
+  const message = unconfigured
+    ? `Yapay zeka sağlayıcısı (${provider}) kimlik bilgileri geçersiz veya eksik.`
+    : `Yapay zeka sağlayıcısına (${provider}) şu anda erişilemiyor.`;
+  return Object.assign(new Error(message), { code, status: 503, cause: error });
+}
+
 async function chatWithUsage({
   systemPrompt,
   userMessage,
@@ -248,27 +268,32 @@ async function chatWithUsage({
     { role: 'user', content: userMessage },
   ];
   let text;
-  if (provider === 'openai') text = await callOpenAI(messages, { temperature, maxTokens, model: modelOverride });
-  else if (provider === 'claude') text = await callClaude(messages, { temperature, maxTokens, model: modelOverride });
-  else if (provider === 'gemini') {
-    text = await invokeGemini(userMessage, {
-      systemPrompt,
-      conversationHistory: [],
-      temperature,
-      maxTokens,
-      toolsEnabled: false,
-      model: modelOverride,
-    });
-  } else if (provider === 'bedrock') {
-    text = await invokeBedrockClaude(userMessage, {
-      systemPrompt,
-      conversationHistory: [],
-      temperature,
-      maxTokens,
-      toolsEnabled: false,
-      model: modelOverride,
-    });
-  } else text = await callOllama(messages, { temperature, maxTokens, model: modelOverride });
+  try {
+    if (provider === 'openai') text = await callOpenAI(messages, { temperature, maxTokens, model: modelOverride });
+    else if (provider === 'claude') text = await callClaude(messages, { temperature, maxTokens, model: modelOverride });
+    else if (provider === 'gemini') {
+      text = await invokeGemini(userMessage, {
+        systemPrompt,
+        conversationHistory: [],
+        temperature,
+        maxTokens,
+        toolsEnabled: false,
+        model: modelOverride,
+        responseMimeType: 'application/json',
+      });
+    } else if (provider === 'bedrock') {
+      text = await invokeBedrockClaude(userMessage, {
+        systemPrompt,
+        conversationHistory: [],
+        temperature,
+        maxTokens,
+        toolsEnabled: false,
+        model: modelOverride,
+      });
+    } else text = await callOllama(messages, { temperature, maxTokens, model: modelOverride });
+  } catch (error) {
+    throw normalizeLlmProviderError(error, provider);
+  }
 
   const inputTokens = estimateTokens(`${systemPrompt}\n${userMessage}`);
   const outputTokens = estimateTokens(text);
@@ -365,4 +390,12 @@ ${petition2Content}
   }
 }
 
-module.exports = { chat, chatWithUsage, callOllamaStream, SYSTEM_PROMPT, generatePetition, comparePetitions };
+module.exports = {
+  chat,
+  chatWithUsage,
+  callOllamaStream,
+  SYSTEM_PROMPT,
+  generatePetition,
+  comparePetitions,
+  normalizeLlmProviderError,
+};

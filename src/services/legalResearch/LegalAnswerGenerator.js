@@ -80,7 +80,7 @@ class LegalAnswerGenerator {
         };
       } catch (error) {
         lastError = error;
-        if (error.code === 'UNKNOWN_SOURCE_ID') break;
+        if (['UNKNOWN_SOURCE_ID', 'PROVIDER_UNCONFIGURED'].includes(error.code)) break;
       }
     }
 

@@ -72,12 +72,21 @@ const loginValidation = [
  */
 const refreshTokenValidation = [
   body('refreshToken')
-    .notEmpty()
-    .withMessage('Refresh token zorunludur.'),
+    .optional(),
+];
+
+const accountEmailValidation = [body('email').trim().isEmail().normalizeEmail().withMessage('Gecerli bir e-posta adresi gereklidir.')];
+const accountTokenValidation = [body('token').isString().isLength({ min: 32, max: 200 }).withMessage('Gecerli bir token gereklidir.')];
+const passwordResetValidation = [
+  ...accountTokenValidation,
+  body('newPassword').isLength({ min: 8 }).matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Yeni parola guclu olmalidir.'),
 ];
 
 module.exports = {
   registerValidation,
   loginValidation,
   refreshTokenValidation,
+  accountEmailValidation,
+  accountTokenValidation,
+  passwordResetValidation,
 };

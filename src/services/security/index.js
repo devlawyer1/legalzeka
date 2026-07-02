@@ -1,4 +1,5 @@
 const NoopFileScanner = require('./NoopFileScanner');
+const ClamAvFileScanner = require('./ClamAvFileScanner');
 
 function boolEnv(name, fallback = false) {
   const value = process.env[name];
@@ -9,6 +10,7 @@ function boolEnv(name, fallback = false) {
 function createFileScanner() {
   const provider = String(process.env.FILE_SCANNER_PROVIDER || 'noop').toLowerCase();
   const required = boolEnv('FILE_SCANNER_REQUIRED', false);
+  if (provider === 'clamav') return new ClamAvFileScanner();
   if (provider !== 'noop') throw new Error(`Unsupported FILE_SCANNER_PROVIDER: ${provider}`);
   if (process.env.NODE_ENV === 'production' && required) {
     throw new Error('A production file scanner is required but only noop is configured.');
@@ -20,4 +22,4 @@ function createFileScanner() {
 }
 
 const fileScanner = createFileScanner();
-module.exports = { createFileScanner, fileScanner };
+module.exports = { ClamAvFileScanner, createFileScanner, fileScanner };

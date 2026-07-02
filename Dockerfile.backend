@@ -9,12 +9,17 @@ RUN apt-get update \
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci \
+    && npm cache clean --force \
+    && rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
-COPY server.js ./
-COPY src ./src
-RUN mkdir -p uploads
+COPY --chown=node:node server.js ./
+COPY --chown=node:node src ./src
+RUN mkdir -p uploads && chown node:node /app uploads
+
+USER node
 
 EXPOSE 3001
 
-CMD ["npm", "start"]
+CMD ["node", "server.js"]

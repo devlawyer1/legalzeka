@@ -1,50 +1,25 @@
-// ============================================================
-// Emsal Atlası - Server Entry Point
-// Sunucu başlatma ve veritabanı bağlantısı
-// ============================================================
-
-const app = require('./src/app');
-const { testConnection } = require('./src/config/db');
 require('dotenv').config();
+const app = require('./src/app');
+const { pool, testConnection } = require('./src/config/db');
+const { log } = require('./src/services/observability');
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 async function startServer() {
-  console.log('');
-  console.log('⚖️  ═══════════════════════════════════════════════════');
-  console.log('⚖️   EMSAL ATLASI - LegalTech SaaS API');
-  console.log('⚖️  ═══════════════════════════════════════════════════');
-  console.log('');
-
-  // Veritabanı bağlantısını test et
-  const isDbConnected = await testConnection();
-
-  if (!isDbConnected) {
-    console.error('\n❌ Veritabanına bağlanılamadı. Lütfen aşağıdakileri kontrol edin:');
-    console.error('   1. MySQL/Docker servisinin çalıştığından emin olun.');
-    console.error('   2. .env dosyasındaki DB bilgilerinin doğru olduğunu kontrol edin.');
-    console.error('   3. "npm run migrate" komutunu çalıştırarak tabloları oluşturun.\n');
-    // process.exit(1);
+  if (!await testConnection()) throw Object.assign(new Error('Database is unavailable.'), { code: 'DATABASE_UNAVAILABLE' });
+  const server = app.listen(PORT, '0.0.0.0', () => log('info', 'server_started', { port: PORT }));
+  server.keepAliveTimeout = Number(process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS || 65000);
+  server.headersTimeout = Number(process.env.HTTP_HEADERS_TIMEOUT_MS || 66000);
+  let stopping = false;
+  async function shutdown(signal) {
+    if (stopping) return; stopping = true; log('info', 'server_stopping', { signal });
+    const forced = setTimeout(() => process.exit(1), Number(process.env.GRACEFUL_SHUTDOWN_TIMEOUT_MS || 30000)); forced.unref();
+    server.close(async () => { await pool.end(); clearTimeout(forced); log('info', 'server_stopped', { signal }); });
   }
-
-  // Sunucuyu başlat
-  app.listen(PORT, () => {
-    console.log('');
-    console.log(`🚀 Sunucu ${PORT} portunda çalışıyor.`);
-    console.log(`📍 http://localhost:${PORT}`);
-    console.log(`📍 Health Check: http://localhost:${PORT}/api/health`);
-    console.log(`🌍 Ortam: ${process.env.NODE_ENV || 'development'}`);
-    console.log('');
-    console.log('📋 Kullanılabilir Endpoint\'ler:');
-    console.log('   POST   /api/auth/register       - Yeni kayıt');
-    console.log('   POST   /api/auth/login           - Giriş');
-    console.log('   GET    /api/auth/me              - Profil bilgileri (JWT)');
-    console.log('   POST   /api/auth/refresh-token   - Token yenileme');
-    console.log('   GET    /api/subscriptions/plans  - Abonelik planları');
-    console.log('   GET    /api/subscriptions/my     - Aktif abonelik (JWT)');
-    console.log('   GET    /api/subscriptions/history - Abonelik geçmişi (JWT)');
-    console.log('');
-  });
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  return server;
 }
 
-startServer();
+if (require.main === module) startServer().catch((error) => { log('error', 'server_start_failed', { code: error.code, reason: error.message }); process.exitCode = 1; });
+module.exports = { startServer };

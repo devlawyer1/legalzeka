@@ -136,6 +136,40 @@ test('citation verifier requires accessible source, matching chunk and grounded 
   assert.equal(fabricatedExcerpt.reason, 'EXCERPT_NOT_GROUNDED');
 });
 
+test('citation verifier resolves chunks beyond the source preview limit directly', async () => {
+  const chunk = {
+    id: chunkId,
+    content: 'Kiracinin tahliyesi icin kanundaki kosullar uygulanir.',
+    heading: 'Madde 236',
+    chunk_type: 'LEGISLATION_ARTICLE',
+  };
+  const verifier = new CitationVerifier({
+    repository: {
+      async getSourceChunk(requestedSourceId, requestedChunkId) {
+        assert.equal(requestedSourceId, sourceId);
+        assert.equal(requestedChunkId, chunkId);
+        return {
+          source: { id: sourceId, source_type: 'LEGISLATION', title: 'Kira mevzuati', origins: [] },
+          chunk,
+        };
+      },
+      async getSource() {
+        throw new Error('Full source preview should not be loaded.');
+      },
+    },
+  });
+  const result = await verifier.verify({
+    claimKey: 'claim-236',
+    claimText: 'Kiracinin tahliyesinde kanundaki kosullar uygulanir.',
+    sourceId,
+    supportType: 'SUPPORTS',
+    candidate: { chunkId, excerpt: 'Kiracinin tahliyesi icin kanundaki kosullar uygulanir.' },
+    accessScope: {},
+  });
+  assert.equal(result.verificationStatus, 'VERIFIED');
+  assert.equal(result.chunkId, chunkId);
+});
+
 test('citation verifier rejects legislation outside requested effective date', async () => {
   const verifier = new CitationVerifier({
     repository: {

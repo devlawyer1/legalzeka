@@ -20,6 +20,7 @@ async function invokeGemini(userMessage, options = {}) {
     conversationHistory = [],
     toolsEnabled = true,
     model: requestedModel = null,
+    responseMimeType = null,
   } = options;
 
   if (!process.env.GEMINI_API_KEY) {
@@ -63,6 +64,7 @@ async function invokeGemini(userMessage, options = {}) {
     generationConfig: {
       maxOutputTokens: maxTokens,
       temperature: temperature,
+      ...(responseMimeType ? { responseMimeType } : {}),
     }
   });
 

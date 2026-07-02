@@ -1,0 +1,15 @@
+const express = require('express');
+const controller = require('../controllers/enterpriseController');
+const { authenticate } = require('../middleware/auth');
+const router = express.Router();
+router.post('/enterprise/sso/:providerId/start', controller.ssoStart);
+router.post('/enterprise/sso/:providerId/callback', controller.ssoCallback);
+router.use('/enterprise', authenticate);
+router.get('/enterprise/institutions/:institutionId/seats', controller.seatUsage);
+router.post('/enterprise/institutions/:institutionId/seats', controller.assignSeat);
+router.delete('/enterprise/institutions/:institutionId/seats/:seatId', controller.revokeSeat);
+router.post('/enterprise/privacy-requests', controller.createPrivacyRequest);
+router.get('/enterprise/privacy-requests/:requestId/export', controller.exportPrivacyData);
+router.get('/enterprise/operations', controller.operations);
+router.get('/enterprise/audit-export', controller.auditExport);
+module.exports = router;

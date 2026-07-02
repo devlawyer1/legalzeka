@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Building2, CreditCard, ArrowLeft, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Building2, CreditCard, ArrowLeft, LogOut, Settings2 } from "lucide-react";
 import { getStoredUser, logout } from "@/lib/api";
 
 export default function AdminLayout({ children }) {
@@ -27,6 +27,7 @@ export default function AdminLayout({ children }) {
     { name: "Kullanıcılar", path: "/admin/users", icon: Users },
     { name: "Bürolar", path: "/admin/firms", icon: Building2 },
     { name: "Abonelikler", path: "/admin/subscriptions", icon: CreditCard },
+    { name: "Sistem Yonetimi", path: "/admin/operations", icon: Settings2 },
   ];
 
   return (

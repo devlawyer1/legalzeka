@@ -5,6 +5,7 @@
 
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/db');
+const { AuthSessionService } = require('../services/enterprise/AuthSessionService');
 
 /**
  * JWT token doğrulama middleware'i.
@@ -26,6 +27,12 @@ async function authenticate(req, res, next) {
 
     // 2. Token'ı doğrula
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.sid) {
+      await new AuthSessionService({ db: pool }).assertActive(decoded.sid, decoded.userId);
+    } else if (process.env.NODE_ENV === 'production' && process.env.ALLOW_LEGACY_STATELESS_TOKENS !== 'true') {
+      return res.status(401).json({ success: false, code: 'AUTH_REQUIRED', message: 'Session-bound token is required.' });
+    }
 
     // 3. Kullanıcının hala aktif olup olmadığını kontrol et
     const { rows: users } = await pool.query(
@@ -59,6 +66,8 @@ async function authenticate(req, res, next) {
       firstName: user.first_name,
       lastName: user.last_name,
       role: user.role_name,
+      sessionId: decoded.sid || null,
+      mfa: Boolean(decoded.mfa),
     };
 
     // 5. Kullanıcının aktif büro üyeliğini ekle (varsa)
@@ -90,6 +99,7 @@ async function authenticate(req, res, next) {
         message: 'Geçersiz token.',
       });
     }
+    if (error.code === 'AUTH_REQUIRED') return res.status(401).json({ success: false, code: error.code, message: error.message });
     return res.status(500).json({
       success: false,
       message: 'Kimlik doğrulama sırasında bir hata oluştu.',

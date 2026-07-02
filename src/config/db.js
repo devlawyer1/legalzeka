@@ -1,43 +1,19 @@
-// ============================================================
-// Emsal Atlası - Database Configuration
-// PostgreSQL bağlantı havuzu (Connection Pool) yapılandırması
-// ============================================================
-
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Supabase (PostgreSQL) bağlantı havuzu
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // Supabase'den alacağınız connection string
-  // ssl: {
-  //   rejectUnauthorized: false // Supabase bağlantıları için genellikle gereklidir
-  // }
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.DB_POOL_MAX || 20),
+  idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30000),
+  connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 5000),
+  statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS || 30000),
+  application_name: process.env.OTEL_SERVICE_NAME || 'legalzeka-backend',
+  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false' } : undefined,
 });
 
-// Eğer DATABASE_URL yerine host, user, password vb. kullanmak istenirse:
-// const pool = new Pool({
-//   host: process.env.DB_HOST,
-//   port: parseInt(process.env.DB_PORT, 10) || 5432,
-//   user: process.env.DB_USER,
-//   password: process.env.DB_PASSWORD,
-//   database: process.env.DB_NAME,
-//   ssl: { rejectUnauthorized: false }
-// });
-
-/**
- * Veritabanı bağlantısını test eder.
- * @returns {Promise<boolean>}
- */
 async function testConnection() {
-  try {
-    const client = await pool.connect();
-    console.log('✅ PostgreSQL (Supabase) veritabanına başarıyla bağlanıldı.');
-    client.release();
-    return true;
-  } catch (error) {
-    console.error('❌ PostgreSQL bağlantı hatası:', error.message);
-    return false;
-  }
+  try { const client = await pool.connect(); await client.query('SELECT 1'); client.release(); return true; }
+  catch (error) { console.error(JSON.stringify({ level: 'error', event: 'database_connection_failed', code: 'DATABASE_UNAVAILABLE' })); return false; }
 }
 
 module.exports = { pool, testConnection };

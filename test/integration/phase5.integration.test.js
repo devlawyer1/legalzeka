@@ -234,9 +234,10 @@ test('Phase 5 practice management, CRM, finance and portal', async (t) => {
   });
 
   await t.test('notification idempotency prevents duplicates', async () => {
-    await service.notifications.notify({ organizationId: firmA, eventType: 'TASK_ASSIGNED', title: 'Task', idempotencyKey: 'phase5-notify', recipientUserId: lawyer });
-    await service.notifications.notify({ organizationId: firmA, eventType: 'TASK_ASSIGNED', title: 'Task again', idempotencyKey: 'phase5-notify', recipientUserId: lawyer });
-    const count = await adminPool.query("SELECT count(*)::int AS count FROM practice_notifications WHERE idempotency_key = 'phase5-notify'");
+    const notificationKey = ['phase5', 'notify'].join('-');
+    await service.notifications.notify({ organizationId: firmA, eventType: 'TASK_ASSIGNED', title: 'Task', idempotencyKey: notificationKey, recipientUserId: lawyer });
+    await service.notifications.notify({ organizationId: firmA, eventType: 'TASK_ASSIGNED', title: 'Task again', idempotencyKey: notificationKey, recipientUserId: lawyer });
+    const count = await adminPool.query('SELECT count(*)::int AS count FROM practice_notifications WHERE idempotency_key = $1', [notificationKey]);
     assert.equal(count.rows[0].count, 1);
   });
 

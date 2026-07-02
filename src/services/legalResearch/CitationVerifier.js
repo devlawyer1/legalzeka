@@ -28,11 +28,14 @@ class CitationVerifier {
 
   async verify({ claimKey, claimText, sourceId, supportType, candidate, accessScope, effectiveAt }) {
     const started = performance.now();
-    const source = await this.repository.getSource(sourceId, accessScope);
+    const resolved = typeof this.repository.getSourceChunk === 'function'
+      ? await this.repository.getSourceChunk(sourceId, candidate?.chunkId, accessScope)
+      : null;
+    const source = resolved?.source || await this.repository.getSource(sourceId, accessScope);
     if (!source) {
       return { verificationStatus: 'REJECTED', reason: 'SOURCE_NOT_ACCESSIBLE', durationMs: performance.now() - started };
     }
-    const chunk = source.chunks.find((item) => item.id === candidate?.chunkId);
+    const chunk = resolved?.chunk || source.chunks.find((item) => item.id === candidate?.chunkId);
     if (!chunk) {
       return { verificationStatus: 'REJECTED', reason: 'CHUNK_SOURCE_MISMATCH', durationMs: performance.now() - started };
     }

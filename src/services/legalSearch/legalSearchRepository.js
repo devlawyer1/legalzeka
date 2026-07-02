@@ -245,6 +245,23 @@ class LegalSearchRepository {
     return { ...rows[0], origins: origins.rows, chunks: chunks.rows, citations: citations.rows };
   }
 
+  async getSourceChunk(sourceId, chunkId, accessScope) {
+    const scoped = buildScopeAndFilters({ filters: {} }, accessScope, [sourceId, chunkId]);
+    const { rows } = await this.db.query(
+      `SELECT to_jsonb(s) AS source, to_jsonb(c) AS chunk
+       FROM legal_sources s
+       JOIN legal_source_chunks c ON c.source_id = s.id AND c.id = $2
+       WHERE s.id = $1 AND ${scoped.clauses.join(' AND ')}
+       LIMIT 1`,
+      scoped.params
+    );
+    if (!rows[0]) return null;
+    return {
+      source: { ...rows[0].source, origins: [] },
+      chunk: rows[0].chunk,
+    };
+  }
+
   async getRelated(sourceId, accessScope, limit = 20) {
     const scoped = buildScopeAndFilters({ filters: {} }, accessScope, [sourceId]);
     scoped.params.push(limit);
