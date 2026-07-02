@@ -18,6 +18,8 @@ The canonical variable list is `.env.example`. Values below are purposes, not se
 
 `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_REQUIRE_TLS`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `LLM_PROVIDER_ENABLED`, `LLM_MODEL_ALLOWLIST`, `LLM_DATA_REGION`, `LLM_LOG_RETENTION` configure explicit adapters. Missing credentials produce `UNCONFIGURED`, never a fake fallback.
 
+`LEGAL_RESEARCH_ON_DEMAND_ENABLED`, `LEGAL_RESEARCH_ON_DEMAND_MIN_LOCAL_SOURCES`, `LEGAL_RESEARCH_ON_DEMAND_MAX_DOCUMENTS`, `LEGAL_RESEARCH_ON_DEMAND_TIMEOUT_MS`, `LEGAL_RESEARCH_ON_DEMAND_CACHE_TTL_MS`, `LEGAL_RESEARCH_ON_DEMAND_CONCURRENCY`, `LEGAL_RESEARCH_ON_DEMAND_REQUEST_DELAY_MS`, `LEGAL_RESEARCH_ON_DEMAND_RETRY_ATTEMPTS`, `LEGAL_RESEARCH_ON_DEMAND_RETRY_BASE_DELAY_MS` and the related circuit-breaker variables control bounded Bedesten retrieval when the local court-decision corpus is insufficient. The upstream URL is fixed in code and is not user-configurable.
+
 ## Operations
 
 `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `ERROR_TRACKING_DSN`, worker intervals, migration timeout/approval variables, backup RPO/RTO and parser resource limits control operations. Secret values belong in a secret manager.

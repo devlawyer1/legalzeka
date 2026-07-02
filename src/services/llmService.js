@@ -261,6 +261,7 @@ async function chatWithUsage({
   outputCostPerMillion,
   providerOverride = null,
   modelOverride = null,
+  responseSchema = null,
 }) {
   const provider = (providerOverride || process.env.LLM_PROVIDER || 'ollama').toLowerCase();
   const messages = [
@@ -280,6 +281,7 @@ async function chatWithUsage({
         toolsEnabled: false,
         model: modelOverride,
         responseMimeType: 'application/json',
+        responseSchema,
       });
     } else if (provider === 'bedrock') {
       text = await invokeBedrockClaude(userMessage, {

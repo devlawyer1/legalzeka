@@ -3,15 +3,29 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 
 const { parseLegalAnswer } = require('../../src/services/legalResearch/ClaimExtractor');
-const { LegalAnswerGenerator } = require('../../src/services/legalResearch/LegalAnswerGenerator');
+const {
+  LegalAnswerGenerator,
+  LEGAL_ANSWER_RESPONSE_SCHEMA,
+} = require('../../src/services/legalResearch/LegalAnswerGenerator');
 const { CitationVerifier } = require('../../src/services/legalResearch/CitationVerifier');
 const {
   assignCitationOrders,
+  countLocalDecisionSources,
   historicalDifferenceWarnings,
 } = require('../../src/services/legalResearch/LegalResearchService');
 
 const sourceId = crypto.randomUUID();
 const chunkId = crypto.randomUUID();
+
+test('on-demand threshold counts unique decisions, not legislation chunks', () => {
+  assert.equal(countLocalDecisionSources([
+    { sourceId: 'law-1', sourceType: 'LEGISLATION' },
+    { sourceId: 'law-1', sourceType: 'LEGISLATION' },
+    { sourceId: 'decision-1', sourceType: 'COURT_DECISION' },
+    { sourceId: 'decision-1', sourceType: 'COURT_DECISION' },
+    { sourceId: 'decision-2', sourceType: 'ADMINISTRATIVE_DECISION' },
+  ]), 2);
+});
 
 function validPayload(overrides = {}) {
   return {
@@ -54,6 +68,42 @@ test('strict legal answer rejects uncited legal claims and markdown-wrapped JSON
     () => parseLegalAnswer(`\`\`\`json\n${JSON.stringify(validPayload())}\n\`\`\``, [sourceId]),
     (error) => error.code === 'INVALID_RESEARCH_JSON'
   );
+});
+
+test('answer generator requests the strict legal response schema', async () => {
+  let request;
+  const generator = new LegalAnswerGenerator({
+    maxAttempts: 1,
+    llm: {
+      async chatWithUsage(input) {
+        request = input;
+        return {
+          text: JSON.stringify(validPayload()),
+          provider: 'gemini',
+          model: 'gemini-test',
+          inputTokens: 10,
+          outputTokens: 10,
+          estimatedCost: 0,
+        };
+      },
+    },
+  });
+
+  await generator.generate({
+    question: 'Soru',
+    sources: [{ sourceId, chunkId, excerpt: 'Kaynak metni', supportHint: 'SUPPORTS' }],
+  });
+
+  assert.equal(request.responseSchema, LEGAL_ANSWER_RESPONSE_SCHEMA);
+  assert.equal(request.responseSchema.type, 'object');
+  assert.deepEqual(request.responseSchema.required, [
+    'summary',
+    'analysis',
+    'counterArguments',
+    'missingInformation',
+    'warnings',
+    'confidence',
+  ]);
 });
 
 test('answer generator rejects hallucinated IDs without a paid provider call', async () => {

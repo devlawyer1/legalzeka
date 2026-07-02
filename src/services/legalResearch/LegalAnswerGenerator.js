@@ -12,6 +12,70 @@ Do not state that no opposing view exists merely because none was retrieved.
 The required schema is:
 {"summary":"string","analysis":[{"claimKey":"string","text":"string","sourceIds":["uuid"],"counterSourceIds":["uuid"]}],"counterArguments":[{"text":"string","sourceIds":["uuid"]}],"missingInformation":["string"],"warnings":["string"],"confidence":{"level":"LOW|MEDIUM|HIGH","reason":"string"}}`;
 
+const LEGAL_ANSWER_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    analysis: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          claimKey: { type: 'string' },
+          text: { type: 'string' },
+          sourceIds: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+          counterSourceIds: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+        required: ['claimKey', 'text', 'sourceIds', 'counterSourceIds'],
+      },
+    },
+    counterArguments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          text: { type: 'string' },
+          sourceIds: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+        required: ['text', 'sourceIds'],
+      },
+    },
+    missingInformation: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    warnings: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    confidence: {
+      type: 'object',
+      properties: {
+        level: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'] },
+        reason: { type: 'string' },
+      },
+      required: ['level', 'reason'],
+    },
+  },
+  required: [
+    'summary',
+    'analysis',
+    'counterArguments',
+    'missingInformation',
+    'warnings',
+    'confidence',
+  ],
+};
+
 function compactSource(source) {
   return {
     sourceId: source.sourceId,
@@ -59,6 +123,7 @@ class LegalAnswerGenerator {
           userMessage,
           maxTokens: Number(process.env.LEGAL_RESEARCH_MAX_OUTPUT_TOKENS || 3500),
           temperature: 0,
+          responseSchema: LEGAL_ANSWER_RESPONSE_SCHEMA,
           inputCostPerMillion: Number(process.env.LEGAL_RESEARCH_INPUT_COST_PER_MILLION || 0),
           outputCostPerMillion: Number(process.env.LEGAL_RESEARCH_OUTPUT_COST_PER_MILLION || 0),
         });
@@ -97,4 +162,4 @@ class LegalAnswerGenerator {
   }
 }
 
-module.exports = { LegalAnswerGenerator, SYSTEM_PROMPT };
+module.exports = { LegalAnswerGenerator, LEGAL_ANSWER_RESPONSE_SCHEMA, SYSTEM_PROMPT };

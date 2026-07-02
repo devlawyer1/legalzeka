@@ -452,6 +452,101 @@ Karşı görüş ve istisna olarak bazı işveren vekilleri için altı aylık k
     assert.match(result.warnings.join(' '), /credentials are invalid/i);
   });
 
+  await t.test('invalid model output returns retrieved sources instead of a server error', async () => {
+    const invalidOutputGenerator = {
+      async generate() {
+        throw Object.assign(new Error('Model output does not match the legal research schema.'), {
+          code: 'INVALID_RESEARCH_SCHEMA',
+          usage: {
+            provider: 'gemini',
+            model: 'gemini-test',
+            inputTokens: 10,
+            outputTokens: 10,
+            estimatedCost: 0,
+          },
+        });
+      },
+    };
+    const service = new LegalResearchService({
+      db: adminPool,
+      searchService,
+      sourceRepository: repository,
+      sessionService,
+      answerGenerator: invalidOutputGenerator,
+      citationVerifier: new CitationVerifier({ repository }),
+      auditLogService: { async record() {} },
+    });
+    const session = await sessionService.create({
+      accessContext: accessContext(userA, [firmA]),
+      title: 'Invalid output fallback',
+    });
+    const result = await service.answer({
+      query: 'Altı aylık kıdem şartı nedir?',
+      sessionId: session.id,
+      filters: { legalDomain: 'İş Hukuku' },
+      idempotencyKey: 'invalid-output-fallback-0001',
+    }, accessContext(userA, [firmA]));
+    assert.equal(result.status, 'INSUFFICIENT');
+    assert.equal(result.analysis.length, 0);
+    assert.equal(result.citations.length > 0, true);
+    assert.match(result.warnings.join(' '), /semasini gecemedi/i);
+    assert.equal(result.usage.provider, 'gemini');
+  });
+
+  await t.test('insufficient local evidence hydrates bounded on-demand decisions and retries once', async () => {
+    let onDemandCalls = 0;
+    const onDemandSourceService = {
+      shouldHydrate({ localSourceCount }) {
+        return localSourceCount === 0;
+      },
+      async hydrate() {
+        onDemandCalls += 1;
+        await ingestion.ingestDecision({
+          sourceName: 'bedesten_yargitay',
+          externalId: 'on-demand-copyright-1',
+          officialSource: true,
+          court: 'Yargıtay',
+          chamber: '11. Hukuk Dairesi',
+          caseNumber: '2025/500',
+          decisionNumber: '2026/600',
+          decisionDate: '2026-01-15',
+          content: 'Telif hakki ve eser sahipligi hukuki sorumluluk bakimindan birlikte degerlendirilir.',
+          metadata: { onDemand: true, provider: 'bedesten' },
+        });
+        return {
+          attempted: true,
+          remoteResultCount: 1,
+          fetchedCount: 1,
+          ingestedCount: 1,
+          newSourceCount: 1,
+        };
+      },
+    };
+    const service = new LegalResearchService({
+      db: adminPool,
+      searchService,
+      sourceRepository: repository,
+      sessionService,
+      answerGenerator: new LegalAnswerGenerator({ llm: fakeLlm(), maxAttempts: 1 }),
+      citationVerifier: new CitationVerifier({ repository }),
+      onDemandSourceService,
+      auditLogService: { async record() {} },
+    });
+    const session = await sessionService.create({
+      accessContext: accessContext(userA, [firmA]),
+      title: 'On-demand source hydration',
+    });
+    const result = await service.answer({
+      query: 'telif hakki eser sahipligi',
+      sessionId: session.id,
+      idempotencyKey: 'on-demand-source-hydration-0001',
+    }, accessContext(userA, [firmA]));
+    assert.equal(onDemandCalls, 1);
+    assert.equal(result.status, 'COMPLETED');
+    assert.equal(result.citations.length > 0, true);
+    assert.equal(result.citations.some((citation) => citation.title.includes('Yarg')), true);
+  });
+
   await t.test('insufficient sources do not invoke the LLM and case access is enforced', async () => {
     const callsBefore = llm.calls;
     const emptySession = await sessionService.create({

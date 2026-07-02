@@ -5,9 +5,17 @@ const Case = require('../../models/Case');
 const AuditLogService = require('../AuditLogService');
 const { legalSearchService, repository } = require('../legalSearch');
 const { sha256, stableStringify, tokenizeTurkish } = require('../legalSearch/normalization');
+const { BedestenOnDemandSourceService } = require('./BedestenOnDemandSourceService');
 const { CitationVerifier } = require('./CitationVerifier');
 const { LegalAnswerGenerator } = require('./LegalAnswerGenerator');
 const { ResearchSessionService, httpError } = require('./ResearchSessionService');
+
+const DECISION_SOURCE_TYPES = new Set([
+  'COURT_DECISION',
+  'CONSTITUTIONAL_COURT_DECISION',
+  'ADMINISTRATIVE_DECISION',
+  'ECHR_DECISION',
+]);
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const date = new Date(`${value}T00:00:00Z`);
@@ -49,6 +57,13 @@ function uniqueBySource(results) {
     seen.add(result.sourceId);
     return true;
   });
+}
+
+function countLocalDecisionSources(results) {
+  return new Set((results || [])
+    .filter((result) => DECISION_SOURCE_TYPES.has(result.sourceType))
+    .map((result) => result.sourceId)
+    .filter(Boolean)).size;
 }
 
 function buildRetrievalQuery(query) {
@@ -144,8 +159,22 @@ function formatAnswerText(structured) {
   return lines.join('\n\n');
 }
 
-function isProviderFailure(error) {
-  return ['PROVIDER_UNAVAILABLE', 'PROVIDER_UNCONFIGURED', 'DEPENDENCY_TIMEOUT'].includes(error?.code);
+function isSynthesisFailure(error) {
+  return [
+    'PROVIDER_UNAVAILABLE',
+    'PROVIDER_UNCONFIGURED',
+    'DEPENDENCY_TIMEOUT',
+    'INVALID_RESEARCH_JSON',
+    'INVALID_RESEARCH_SCHEMA',
+    'UNKNOWN_SOURCE_ID',
+  ].includes(error?.code);
+}
+
+function synthesisFailureWarning(error) {
+  if (['INVALID_RESEARCH_JSON', 'INVALID_RESEARCH_SCHEMA', 'UNKNOWN_SOURCE_ID'].includes(error?.code)) {
+    return 'Yapay zeka ciktisi guvenli hukuk arastirmasi semasini gecemedi; kaynaklar sentezlenmeden gosterildi.';
+  }
+  return error?.message || 'Yapay zeka sentezi su anda kullanilamiyor.';
 }
 
 function providerFallbackCitations(candidates) {
@@ -171,6 +200,7 @@ class LegalResearchService {
     sessionService = null,
     answerGenerator = null,
     citationVerifier = null,
+    onDemandSourceService = undefined,
     auditLogService = AuditLogService,
   } = {}) {
     this.db = db;
@@ -179,6 +209,9 @@ class LegalResearchService {
     this.sessionService = sessionService || new ResearchSessionService({ db });
     this.answerGenerator = answerGenerator || new LegalAnswerGenerator();
     this.citationVerifier = citationVerifier || new CitationVerifier({ repository: sourceRepository });
+    this.onDemandSourceService = onDemandSourceService === undefined
+      ? new BedestenOnDemandSourceService({ db })
+      : onDemandSourceService;
     this.auditLogService = auditLogService;
   }
 
@@ -372,8 +405,8 @@ class LegalResearchService {
     let usage = {};
     try {
       const searchStarted = performance.now();
-      const supportSearch = await this._runSearch(request.query, normalizedRequest, searchContext);
-      const counterSearch = await this._runSearch(
+      let supportSearch = await this._runSearch(request.query, normalizedRequest, searchContext);
+      let counterSearch = await this._runSearch(
         `${request.query} aksi yönde istisna uygulanmaz ret karşı görüş`,
         normalizedRequest,
         searchContext
@@ -398,6 +431,40 @@ class LegalResearchService {
             versionStatus: 'CURRENT',
           })
         : { results: [], diagnostics: {} };
+      const searchRuns = [
+        supportSearch,
+        counterSearch,
+        historicalLegislationSearch,
+        currentSearch,
+      ];
+      let onDemandResult = null;
+      if (this.onDemandSourceService?.shouldHydrate?.({
+        localSourceCount: countLocalDecisionSources(supportSearch.results),
+        request: normalizedRequest,
+      })) {
+        try {
+          onDemandResult = await this.onDemandSourceService.hydrate({
+            query: request.query,
+            filters: request.filters,
+            requestId,
+          });
+          if (onDemandResult?.ingestedCount > 0) {
+            supportSearch = await this._runSearch(request.query, normalizedRequest, searchContext);
+            counterSearch = await this._runSearch(
+              `${request.query} aksi yönde istisna uygulanmaz ret karşı görüş`,
+              normalizedRequest,
+              searchContext
+            );
+            searchRuns.push(supportSearch, counterSearch);
+          }
+        } catch (error) {
+          onDemandResult = {
+            attempted: true,
+            ingestedCount: 0,
+            safeErrorCode: error.code || 'BEDESTEN_UNAVAILABLE',
+          };
+        }
+      }
       const searchDurationMs = performance.now() - searchStarted;
 
       const supportLimit = Number(process.env.LEGAL_RESEARCH_SUPPORT_SOURCE_LIMIT || 8);
@@ -423,15 +490,15 @@ class LegalResearchService {
       if (counterCandidates.length === 0) {
         baseWarnings.push('Ayrı karşıt kaynak sorgusunda doğrulanabilir sonuç bulunamadı; bu durum karşıt görüş olmadığı anlamına gelmez.');
       }
+      if (onDemandResult?.safeErrorCode) {
+        baseWarnings.push('Anlık Bedesten içtihat araması kullanılamadı; sonuç yerel corpus ile sınırlıdır.');
+      } else if (onDemandResult?.attempted && onDemandResult.remoteResultCount === 0) {
+        baseWarnings.push('Anlık Bedesten aramasında da doğrulanabilir içtihat bulunamadı.');
+      }
 
-      const searchEmbeddingCost = [
-        supportSearch,
-        counterSearch,
-        historicalLegislationSearch,
-        currentSearch,
-      ]
+      const searchEmbeddingCost = searchRuns
         .reduce((sum, result) => sum + costFromSearch(result), 0);
-      const cacheStatuses = [supportSearch, counterSearch, historicalLegislationSearch, currentSearch]
+      const cacheStatuses = searchRuns
         .map((result) => result?.diagnostics?.cacheStatus)
         .filter(Boolean);
       const searchCacheStatus = cacheStatuses.length && cacheStatuses.every((status) => status === 'HIT')
@@ -480,13 +547,13 @@ class LegalResearchService {
           sources: candidates,
         });
       } catch (error) {
-        if (!isProviderFailure(error)) throw error;
+        if (!isSynthesisFailure(error)) throw error;
         const structured = {
           summary: 'Kaynak araması tamamlandı ancak yapay zeka sentezi şu anda kullanılamıyor.',
           analysis: [],
           counterArguments: [],
           missingInformation: ['Sağlayıcı yapılandırması düzeltildikten sonra cevap sentezi yeniden çalıştırılmalıdır.'],
-          warnings: [...new Set([...baseWarnings, error.message])],
+          warnings: [...new Set([...baseWarnings, synthesisFailureWarning(error)])],
           confidence: { level: 'LOW', reason: 'Kaynaklar getirildi; yapay zeka sentezi yapılmadı.' },
         };
         const durationMs = performance.now() - started;
@@ -494,7 +561,7 @@ class LegalResearchService {
           answerId: slot.answerId,
           answerText: structured.summary,
           structured,
-          usage: { provider: process.env.LLM_PROVIDER || null },
+          usage: error.usage || { provider: process.env.LLM_PROVIDER || null },
           metrics: {
             searchEmbeddingCost,
             totalCost: searchEmbeddingCost,
@@ -597,6 +664,7 @@ module.exports = {
   answerRequestSchema,
   assignCitationOrders,
   candidateFromResult,
+  countLocalDecisionSources,
   formatAnswerText,
   historicalDifferenceWarnings,
 };
